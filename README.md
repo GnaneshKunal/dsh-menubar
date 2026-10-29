@@ -39,7 +39,9 @@ copy-paste and survives host restarts.
 
 ## What it does
 
-- **⌃⌥Q** summons a floating chat window; the ✦ status item is the alternative entry point.
+- **⌃⌥Q** summons the window from the whale in the menu bar (the official mark, shipped as a template SVG).
+- The default surface is the **real dsh interface** embedded in the window, so tool cards, approvals and
+  theme tokens come for free; the compact window remains available in Settings → Menu Bar.
 - Sessions land in a **`menubar-sessions`** workspace, named by the Host's generated titles.
 - **New session per open**; pick an existing one to continue it — switching loads that session's
   history into the transcript.

@@ -20,7 +20,7 @@ export function prefsFilePath() {
 /** Defaults used before anything is saved. */
 export function defaultPrefs() {
   return {
-    ui: 'native',
+    ui: 'embedded',
     workspacePath: dshHomePath('menubar-sessions'),
   }
 }

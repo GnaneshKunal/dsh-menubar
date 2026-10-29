@@ -37,11 +37,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            if let image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "DSH quick ask") {
+            // The official mark, shipped with the plugin's web front end.
+            if let url = Bundle.module.url(forResource: "whale", withExtension: "svg"),
+               let whale = NSImage(contentsOf: url) {
+                whale.size = NSSize(width: 18, height: 18)
+                whale.isTemplate = true
+                button.image = whale
+                debugLog("status icon: whale svg loaded (18pt template)")
+            } else if let image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "dsh") {
+                debugLog("status icon: whale missing, fell back to sparkle")
                 image.isTemplate = true
                 button.image = image
             } else {
-                button.title = "◎"
+                button.title = "◈"
             }
             button.toolTip = "DSH quick ask  ⌃⌥Q"
             button.target = self

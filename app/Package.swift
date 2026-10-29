@@ -10,7 +10,8 @@ let package = Package(
             path: "Sources/DSHMenubar",
             resources: [
                 .copy("Resources/ui.html"),
-                .copy("Resources/vendor")
+                .copy("Resources/vendor"),
+                .copy("Resources/whale.svg")
             ]
         )
     ]

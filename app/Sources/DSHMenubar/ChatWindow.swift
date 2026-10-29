@@ -19,10 +19,11 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
     /// inside the window so its real components (chat, tool cards, approvals,
     /// themes) are used instead of ours.
     /// Surface choice: env wins for testing, otherwise the stored preference.
-    private var embedded = ProcessInfo.processInfo.environment["DSH_MENUBAR_UI"] == "embedded"
+    private var embedded = ProcessInfo.processInfo.environment["DSH_MENUBAR_UI"] != "native"
     private var appURL: URL?
     private var pasteMonitor: Any?
     private var concealTask: Task<Void, Never>?
+    private let closeOverlay = NSButton()
     private var lastCloseAt = Date.distantPast
     var closedRecently: Bool { Date().timeIntervalSince(lastCloseAt) < 0.25 }
     var isShown: Bool { panel.isVisible }
@@ -75,6 +76,22 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         container.addSubview(webView)
         panel.contentView = container
 
+        // The embedded GUI has no window chrome, so the close control lives
+        // here; it is hidden in native mode, where the page draws its own.
+        closeOverlay.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
+        closeOverlay.isBordered = false
+        closeOverlay.contentTintColor = .secondaryLabelColor
+        closeOverlay.target = self
+        closeOverlay.action = #selector(closeClicked)
+        closeOverlay.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(closeOverlay)
+        NSLayoutConstraint.activate([
+            closeOverlay.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            closeOverlay.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            closeOverlay.widthAnchor.constraint(equalToConstant: 20),
+            closeOverlay.heightAnchor.constraint(equalToConstant: 20),
+        ])
+
         // Title strip is draggable; it stops short of the close button so that
         // control keeps receiving clicks.
         let drag = DragHandle(frame: .zero)
@@ -90,6 +107,7 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         panel.dragBandHeight = embedded ? 12 : 38
         panel.delegate = self
         webView.navigationDelegate = self
+        closeOverlay.isHidden = !embedded
         if !embedded { loadPage() }
     }
 
@@ -171,8 +189,10 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             embedded = requested
             panel.dragBandHeight = embedded ? 12 : 38
         }
+        closeOverlay.isHidden = !embedded
         if embedded, let appUrl, let url = URL(string: appUrl) {
             appURL = url
+            closeOverlay.isHidden = false
             webView.load(URLRequest(url: url))
             debugLog("embedded ui: loading \(url.absoluteString.split(separator: "?").first ?? "?")")
             return
@@ -205,6 +225,8 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         }
         debugLog("window shown at \(panel.frame)")
     }
+
+    @objc private func closeClicked() { close() }
 
     func close() {
         lastCloseAt = Date()
