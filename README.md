@@ -127,6 +127,12 @@ and enforces it in CI, so the submission is armed as a **dsh schedule** (a durab
 reopens this session when it is due, visible under Automation tasks) rather than a system job; the
 script is idempotent and stops if the entry or the PR already exists.
 
+## Controls
+
+`Settings → Menubar` shows whether the app is running and lets you **Start**, **Restart** or **Quit**
+it, backed by `GET`/`POST /menubar/app` on the plugin. Quitting from that page unloads the LaunchAgent,
+so the app stays down; Start loads it again, which is why a quit is recoverable without a terminal.
+
 ## Limits
 
 - Binary file contents can't be attached: the Host accepts files only through upload receipts, and

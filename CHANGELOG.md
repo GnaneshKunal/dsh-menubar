@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.4
+
+You can now start the app from Settings, so quitting it is no longer a one-way
+door.
+
+- **Menu Bar settings → Menu bar app**: shows Running (with pid) or Stopped, and
+  offers Start, Restart and Quit. Quit uses `launchctl bootout`, so the app stays
+  stopped until you say otherwise; Start bootstraps the LaunchAgent first, so it
+  works from a fully unloaded state.
+- `GET /menubar/app` reports `{running, pid, loaded}`, `POST /menubar/app
+  {action}` performs `start`, `stop` or `restart`.
+- Both transitions tolerate launchd's asynchronous behaviour: `bootstrap`
+  registers the job after it returns, and `kickstart -k` can report failure while
+  it is busy replacing the process, so the outcome is read back from
+  `launchctl print` instead of trusting an exit code.
+
 ## v0.1.3
 
 Fixes the boot failure the scoped rename introduced.

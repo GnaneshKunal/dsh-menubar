@@ -200,12 +200,7 @@
             React.createElement("div", { style: S.group },
               React.createElement("div", { style: S.label }, "Menu bar app"),
               React.createElement("div", { style: S.row },
-                React.createElement("div", {
-                  style: Object.assign({}, S.status, {
-                    color: prefs && app ? undefined : undefined,
-                    flex: "1",
-                  }),
-                }, !app ? "Checking…" : (app.running
+                React.createElement("div", { style: Object.assign({}, S.status, { flex: "1" }) }, !app ? "Checking…" : (app.running
                   ? "Running" + (app.pid ? " (pid " + app.pid + ")" : "")
                   : "Stopped")),
                 React.createElement("button", {

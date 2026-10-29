@@ -62,13 +62,38 @@ export async function appStart() {
   } catch {
     throw new Error(`no LaunchAgent at ${plist}`)
   }
-  const loaded = await launchctl(['print', `${domain()}/${APP_LABEL}`])
-  if (!loaded.ok) {
-    const boot = await launchctl(['bootstrap', domain(), plist])
-    if (!boot.ok) throw new Error(`could not load the LaunchAgent: ${boot.message}`)
+  // bootstrap registers the job asynchronously, so a kickstart issued straight
+  // after it can miss the service. Poll for registration first.
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const waitForJob = async (attempts) => {
+    for (let i = 0; i < attempts; i += 1) {
+      const printed = await launchctl(['print', `${domain()}/${APP_LABEL}`])
+      if (printed.ok) return true
+      await sleep(250)
+    }
+    return false
   }
+
+  if (!(await waitForJob(1))) {
+    const boot = await launchctl(['bootstrap', domain(), plist])
+    // "already bootstrapped" is success for our purpose.
+    if (!boot.ok && !/already bootstrapped|service is already loaded/i.test(boot.message)) {
+      throw new Error(`could not load the LaunchAgent: ${boot.message}`)
+    }
+    if (!(await waitForJob(12))) throw new Error('the LaunchAgent did not register after bootstrap')
+  }
+
   const kick = await launchctl(['kickstart', '-k', `${domain()}/${APP_LABEL}`])
-  if (!kick.ok) throw new Error(`could not start the app: ${kick.message}`)
+  if (!kick.ok) {
+    // kickstart -k reports failure when it races the process it just asked
+    // launchd to replace; poll the settled state rather than trusting the exit.
+    for (let i = 0; i < 8; i += 1) {
+      await sleep(300)
+      const current = await appStatus()
+      if (current.running) return current
+    }
+    throw new Error(`could not start the app: ${kick.message}`)
+  }
   return appStatus()
 }
 
