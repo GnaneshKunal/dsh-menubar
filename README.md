@@ -21,9 +21,9 @@ It is not a lookalike: that is the real dsh front end, booted inside the window 
 pre-authenticated URL, so tool cards, approvals, tabs and theme tokens all come from the shell.
 
 The status item is dsh's own whale mark, drawn as a template image so it follows light and dark menu
-bars:
+bars — here in the menu bar, second from the left:
 
-![the whale status item](assets/whale-statusitem.png)
+![the dsh whale in the macOS menu bar next to Slack and others](assets/menubar.png)
 
 ## Why a plugin instead of a subprocess
 
