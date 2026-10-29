@@ -8,19 +8,19 @@
 #
 # On first boot the plugin generates a bearer token and persists it at
 # ~/.dsh/menubar-token (chmod 0600). The Swift app reads that file at
-# launch, so reconnecting never needs a copy-paste. Set DSH_SWIFT_TOKEN to pin
+# launch, so reconnecting never needs a copy-paste. Set DSH_MENUBAR_TOKEN to pin
 # a fixed token instead (e.g. for a remote deployment).
 #
 # Sessions default to the ~/.dsh/menubar-sessions workspace, which the plugin
 # creates and registers on the first implicit session.create — the GUI shows a
 # `menubar-sessions` group next to `browser-sessions`. Set
-# DSH_SWIFT_SESSION_WORKSPACE to another path, or to an empty string to keep
+# DSH_MENUBAR_WORKSPACE to another path, or to an empty string to keep
 # those sessions ungrouped.
 
 - insert:
     - id: menubar
-      name: 'dsh-menubar'
+      name: '@gnanesh/dsh-menubar'
       config:
-        token: !!js process.env.DSH_SWIFT_TOKEN
-        workspacePath: !!js process.env.DSH_SWIFT_SESSION_WORKSPACE
+        token: !!js process.env.DSH_MENUBAR_TOKEN
+        workspacePath: !!js process.env.DSH_MENUBAR_WORKSPACE
         path: /menubar/bridge

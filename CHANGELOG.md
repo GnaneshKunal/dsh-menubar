@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.2
+
+First release on npm, as `@gnanesh/dsh-menubar`.
+
+- The unscoped name `dsh-menubar` was already reserved on npm by another author, so the package is
+  scoped. `plugin/package.json` and `plugin/cordis.patch.yml` name the same package — the loader
+  resolves a row by package name, so those two must never drift apart.
+- npm metadata added (description, keywords, license, author, repository with `directory: plugin`,
+  homepage, bugs) so the registry page describes the plugin instead of showing an empty card.
+- The config overrides are now `DSH_MENUBAR_TOKEN` and `DSH_MENUBAR_WORKSPACE`; the old
+  `DSH_SWIFT_*` names dated from before the project was renamed.
+
 ## v0.1.1
 
 The menu bar item disappearing turned out to be the app exiting, not the host.

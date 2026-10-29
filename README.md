@@ -40,7 +40,7 @@ app ──WS──▶ plugin (inside the dsh host) ──Typert Remotes──▶
 
 ```bash
 # 1. plugin into the web profile (or use plugin_manager install_bundle)
-dsh plugin --profile web add /path/to/dsh-menubar/plugin
+dsh plugin --profile web add @gnanesh/dsh-menubar    # or: plugin add /path/to/dsh-menubar/plugin
 dsh web                     # restart the host
 
 # 2. app

@@ -53,7 +53,7 @@ jobs:
         if: vars.NPM_PUBLISH == 'true'
         run: |
           version="${GITHUB_REF_NAME#v}"
-          if npm view "dsh-menubar@$version" version >/dev/null 2>&1; then
+          if npm view "@gnanesh/dsh-menubar@$version" version >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "npm already has $version; skipping the publish step"
           else

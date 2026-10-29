@@ -1,8 +1,7 @@
 {
-  "name": "dsh-menubar",
-  "version": "0.1.1",
-  "private": true,
-  "description": "DeepSeek Harness in your macOS menu bar: a token-authenticated bridge plus a native quick-ask window.",
+  "name": "@gnanesh/dsh-menubar",
+  "version": "0.1.2",
+  "description": "DeepSeek Harness in your macOS menu bar: a host plugin that bridges a running dsh web host over an authenticated WebSocket, so asks made from a menu bar client become real tracked sessions.",
   "license": "MIT",
   "type": "module",
   "main": "index.js",
@@ -18,7 +17,8 @@
     "src",
     "cordis.patch.yml",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "dependencies": {
     "ws": "^8.21.0"
@@ -46,5 +46,27 @@
         "@deepseek-ai/dsh-client-ui-settings"
       ]
     }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "menubar",
+    "macos",
+    "bridge",
+    "sessions",
+    "plugin"
+  ],
+  "author": {
+    "name": "Gnanesh",
+    "url": "https://github.com/GnaneshKunal"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GnaneshKunal/dsh-menubar.git",
+    "directory": "plugin"
+  },
+  "homepage": "https://github.com/GnaneshKunal/dsh-menubar#readme",
+  "bugs": {
+    "url": "https://github.com/GnaneshKunal/dsh-menubar/issues"
   }
 }
