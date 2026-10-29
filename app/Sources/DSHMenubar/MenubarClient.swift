@@ -35,6 +35,8 @@ final class MenubarClient {
     private(set) var hostURL: URL?
     /// Absolute websocket URL of the live socket, for the page to reconnect.
     private(set) var connectedURL: String?
+    /// Called on the main thread when the socket dies (host restart, sleep).
+    var onDisconnect: (() -> Void)?
     /// Full discovery payload, including the host's pre-authenticated app URL.
     private(set) var discoveryPayload: [String: Any] = [:]
 
@@ -371,6 +373,9 @@ final class MenubarClient {
                 } catch {
                     self.failAll(BridgeError(code: "closed", message: error.localizedDescription))
                     self.failHandshake(BridgeError(code: "closed", message: error.localizedDescription))
+                    // A host restart drops the socket; without this the app would
+                    // stay "connected" in its own head until relaunched.
+                    DispatchQueue.main.async { [weak self] in self?.onDisconnect?() }
                     return
                 }
             }

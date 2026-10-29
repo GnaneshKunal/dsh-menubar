@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         quickAsk = QuickAskController()
+        client.onDisconnect = { [weak self] in self?.handleConnectionLoss() }
         setupStatusItem()
         setupHotKey()
         connect()
@@ -102,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func connect() {
         guard !connecting else { return }
+        if connected { return }   // a live socket already exists
         connecting = true
         updateStatus("connecting…")
 
@@ -133,6 +135,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in self?.connect() }
                 }
             }
+        }
+    }
+
+    /// Reconnect when the host goes away, and rebind the page to the fresh
+    /// launch token: `appUrl` embeds a per-process token that a restart voids.
+    private func handleConnectionLoss() {
+        guard connected || connecting else { return }
+        connected = false
+        connecting = false
+        updateStatus("host went away — reconnecting…")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.connect()
         }
     }
 
