@@ -113,6 +113,20 @@ Methods: `session.create`, `session.prompt`, `session.cancel`, `session.history`
 `session.follow` starts a long-lived stream; the Host acknowledges immediately and then pushes
 `assistant-stream` frames (token and reasoning deltas) plus durable `event` entries until `turn/end`.
 
+## Releasing and being listed
+
+Pushing a `v*` tag is the release (`.github/workflows/release.yml`): the tag is checked against
+`plugin/package.json`, every entry is syntax-checked, the GitHub release is written from
+`CHANGELOG.md`, and npm publishing runs once the repository variable `NPM_PUBLISH=true` is set with a
+trusted publisher configured on npmjs.
+
+[`scripts/submit-awesome.sh`](scripts/submit-awesome.sh) submits the plugin to
+[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) — fork, one
+`data/plugins/<owner>__<repo>.yml`, PR. That list requires the repository to be at least one day old
+and enforces it in CI, so the submission is armed with a launchd calendar job
+(`co.gnanesh.dshmenubar-awesome`) rather than run by hand; the script is idempotent and stops if the
+entry or the PR already exists.
+
 ## Limits
 
 - Binary file contents can't be attached: the Host accepts files only through upload receipts, and
