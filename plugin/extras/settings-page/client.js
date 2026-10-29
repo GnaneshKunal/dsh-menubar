@@ -183,13 +183,15 @@
             name: "settings.section",
             id: "menubar",
             order: 25,
-            label: "Menu Bar",
+            label: function () { return "Menu Bar"; },
           }, function () {
             return React.createElement(MenuBarSettings, null);
           });
         }, "dsh-menubar: settings page");
       }
 
+      // "slots" is a shell service, not a boot entry, so it is a service inject
+      // only — declaring it as a module edge would leave the entry inert.
       exports.inject = ["slots"];
       exports.apply = apply;
       return module.exports;

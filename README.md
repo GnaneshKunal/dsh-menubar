@@ -54,6 +54,15 @@ copy-paste and survives host restarts.
   `clipboardData` for files.
 - Window is draggable, stays put on outside clicks, closes on ✕ or Escape.
 
+## Settings page (parked)
+
+The Menu Bar settings page is **not loaded by default**. Its client bundle lives in
+[`plugin/extras/settings-page/client.js`](plugin/extras/settings-page/client.js) and is not declared in
+`package.json`, because a client entry that fails to activate **blocks the whole web boot** — the host
+then only shows "Failed to load plugins". Preferences are still respected through
+`~/.dsh/menubar.json` and `GET/POST /menubar/prefs`; only the GUI page is parked until it can be tested
+in an isolated host.
+
 ## Settings
 
 The plugin registers a **Menu Bar** page in DSH Settings (`settings.section`): choose the window

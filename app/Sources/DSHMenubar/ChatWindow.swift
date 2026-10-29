@@ -44,6 +44,31 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         controller.add(self, name: "dsh")
         panel.pasteTarget = self
 
+        // Capture page errors from the embedded GUI: a failing boot entry only
+        // reports "1 entry did not activate" in the UI, not the reason.
+        let errorHook = WKUserScript(source: #"""
+        (() => {
+          const post = (message) => {
+            try { window.webkit.messageHandlers.dsh.postMessage({ type: 'log', message: 'page: ' + message }); } catch (_) {}
+          };
+          window.addEventListener('error', (e) => post('error ' + (e.message || '') + ' @' + (e.filename || '') + ':' + (e.lineno || 0)));
+          window.addEventListener('unhandledrejection', (e) => post('rejection ' + String(e.reason)));
+          for (const level of ['warn', 'log']) {
+            const originalLevel = console[level];
+            console[level] = function (...args) {
+              const text = args.map((a) => (a && a.stack) ? a.stack : String(a)).join(' ');
+              if (/menubar|boot|activat|plugin/i.test(text)) post('console.' + level + ' ' + text.slice(0, 500));
+              originalLevel.apply(console, args);
+            };
+          }
+          const original = console.error;
+          console.error = function (...args) {
+            post('console.error ' + args.map((a) => (a && a.stack) ? a.stack : String(a)).join(' ').slice(0, 600));
+            original.apply(console, args);
+          };
+        })();
+        """#, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+
         // A local monitor runs before the event is dispatched, so ⌘V cannot be
         // swallowed by WebKit's DOM paste handling (which reports no files for
         // a file:// page). Returning nil consumes the event.
@@ -106,6 +131,7 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
 
         panel.dragBandHeight = embedded ? 12 : 38
         panel.delegate = self
+        if embedded { config.userContentController.addUserScript(errorHook) }
         webView.navigationDelegate = self
         closeOverlay.isHidden = !embedded
         if !embedded { loadPage() }
