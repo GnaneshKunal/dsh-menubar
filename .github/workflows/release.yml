@@ -65,6 +65,21 @@ jobs:
         working-directory: plugin
         run: npm publish --access public --provenance
 
+      # npm answers "+ pkg@version" before the registry serves the packument, so
+      # a release could look published while `npm view` still returns the old one.
+      - name: Wait until the registry serves the version
+        if: vars.NPM_PUBLISH == 'true' && steps.published.outputs.exists != 'true'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            if npm view "@gnanesh/dsh-menubar@$version" version >/dev/null 2>&1; then
+              echo "registry serves $version (after ~$((i * 10))s)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::npm accepted $version but the registry has not served it yet"
+
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
