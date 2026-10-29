@@ -8,7 +8,7 @@ import WebKit
 /// files, drag-and-drop, and rich rendering are things the web platform already
 /// does well; re-implementing them in AppKit would be a permanent tax for a
 /// worse result.
-final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageHandler, PasteHandling, NSWindowDelegate {
+final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageHandler, PasteHandling, NSWindowDelegate, NSSearchFieldDelegate {
 
     private let panel: ChatPanel
     private let webView: WKWebView
@@ -24,6 +24,9 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
     private var pasteMonitor: Any?
     private var concealTask: Task<Void, Never>?
     private let closeOverlay = NSButton()
+    private let findBar = NSVisualEffectView()
+    private let findField = NSSearchField()
+    private let findStatus = NSTextField(labelWithString: "")
     private var lastCloseAt = Date.distantPast
     var closedRecently: Bool { Date().timeIntervalSince(lastCloseAt) < 0.25 }
     var isShown: Bool { panel.isVisible }
@@ -114,6 +117,14 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             guard let self, self.panel.isVisible else { return event }
             let isPaste = event.modifierFlags.contains(.command)
                 && event.charactersIgnoringModifiers?.lowercased() == "v"
+            let key = (event.charactersIgnoringModifiers ?? "").lowercased()
+            if event.keyCode == 53, !self.findBar.isHidden { self.hideFind(); return nil }
+            let findChord = key == "f" && (event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control))
+            if findChord { self.showFind(); return nil }
+            if key == "g" && event.modifierFlags.contains(.command) {
+                if event.modifierFlags.contains(.shift) { self.findPrevious() } else { self.findNext() }
+                return nil
+            }
             debugLog("monitor key: \(event.charactersIgnoringModifiers ?? "?") cmd=\(event.modifierFlags.contains(.command))")
             guard isPaste else { return event }
             return self.handlePaste() ? nil : event
@@ -138,6 +149,46 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         webView.setValue(false, forKey: "drawsBackground")
         container.addSubview(webView)
         panel.contentView = container
+
+        // Find bar: WebKit's own find, driven from a native field, because a
+        // bare agent app has no Find command for ⌘F to reach.
+        findBar.material = .menu
+        findBar.blendingMode = .withinWindow
+        findBar.state = .active
+        findBar.wantsLayer = true
+        findBar.layer?.cornerRadius = 8
+        findBar.isHidden = true
+        findBar.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(findBar)
+
+        findField.placeholderString = "Find in page"
+        findField.sendsWholeSearchString = false
+        findField.target = self
+        findField.action = #selector(findFieldSubmitted)
+        findField.translatesAutoresizingMaskIntoConstraints = false
+        findField.delegate = self
+
+        findStatus.font = .systemFont(ofSize: 11)
+        findStatus.textColor = .secondaryLabelColor
+        findStatus.translatesAutoresizingMaskIntoConstraints = false
+        findStatus.stringValue = ""
+
+        findBar.addSubview(findField)
+        findBar.addSubview(findStatus)
+        NSLayoutConstraint.activate([
+            findBar.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            findBar.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            findBar.heightAnchor.constraint(equalToConstant: 34),
+            findBar.widthAnchor.constraint(equalToConstant: 330),
+
+            findField.leadingAnchor.constraint(equalTo: findBar.leadingAnchor, constant: 8),
+            findField.centerYAnchor.constraint(equalTo: findBar.centerYAnchor),
+            findField.widthAnchor.constraint(equalToConstant: 210),
+
+            findStatus.leadingAnchor.constraint(equalTo: findField.trailingAnchor, constant: 8),
+            findStatus.trailingAnchor.constraint(lessThanOrEqualTo: findBar.trailingAnchor, constant: -8),
+            findStatus.centerYAnchor.constraint(equalTo: findBar.centerYAnchor),
+        ])
 
         // The embedded GUI has no window chrome, so the close control lives
         // here; it is hidden in native mode, where the page draws its own.
@@ -286,6 +337,11 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         }
     }
 
+    func controlTextDidChange(_ notification: Notification) {
+        guard (notification.object as? NSSearchField) === findField else { return }
+        runFind(backwards: false)
+    }
+
     func windowDidResize(_ notification: Notification) {
         debugLog("window resized to \(panel.frame.size)")
         reportViewport(tag: "resize")
@@ -367,6 +423,48 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
     }
 
     @objc private func closeClicked() { close() }
+
+    /// Show the find bar and focus its field.
+    @objc func showFind() {
+        findBar.isHidden = false
+        panel.makeKey()
+        panel.makeFirstResponder(findField)
+        findField.selectText(nil)
+        if !findField.stringValue.isEmpty { runFind(backwards: false) }
+    }
+
+    /// Hide the bar and clear WebKit's selection highlight.
+    func hideFind() {
+        findBar.isHidden = true
+        findField.stringValue = ""
+        findStatus.stringValue = ""
+        if #available(macOS 13.3, *) {
+            webView.find("", configuration: WKFindConfiguration()) { _ in }
+        }
+        panel.makeFirstResponder(webView)
+    }
+
+    @objc func findNext() { if !findBar.isHidden { runFind(backwards: false) } else { showFind() } }
+    @objc func findPrevious() { if findBar.isHidden { showFind() } else { runFind(backwards: true) } }
+
+    @objc private func findFieldSubmitted() { runFind(backwards: false) }
+
+    private func runFind(backwards: Bool) {
+        let query = findField.stringValue
+        guard !query.isEmpty else { findStatus.stringValue = ""; return }
+        guard #available(macOS 13.3, *) else { findStatus.stringValue = "unsupported"; return }
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        configuration.wraps = true
+        configuration.caseSensitive = false
+        webView.find(query, configuration: configuration) { [weak self] result in
+            guard let self else { return }
+            let found = result.matchFound
+            self.findStatus.stringValue = found ? "found" : "not found"
+            self.findStatus.textColor = found ? .secondaryLabelColor : .systemRed
+            debugLog("find \"\(query)\" backwards=\(backwards) → \(found)")
+        }
+    }
 
     func close() {
         lastCloseAt = Date()

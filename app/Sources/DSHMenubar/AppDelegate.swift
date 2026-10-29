@@ -65,6 +65,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(.separator())
+        let find = editMenu.addItem(withTitle: "Find…", action: #selector(QuickAskController.showFind), keyEquivalent: "f")
+        find.target = quickAsk
+        let findNext = editMenu.addItem(withTitle: "Find Next", action: #selector(QuickAskController.findNext), keyEquivalent: "g")
+        findNext.target = quickAsk
+        let findPrevious = editMenu.addItem(withTitle: "Find Previous", action: #selector(QuickAskController.findPrevious), keyEquivalent: "g")
+        findPrevious.keyEquivalentModifierMask = [.command, .shift]
+        findPrevious.target = quickAsk
         editItem.submenu = editMenu
         mainMenu.addItem(editItem)
 

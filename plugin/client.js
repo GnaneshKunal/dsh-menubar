@@ -246,7 +246,7 @@
               return slots.inject("plugins.row.config", function () {
                 return slots.register({
                   name: "plugins.row.config",
-                  key: "@gnanesh/dsh-menubar#menubar",
+                  key: "@gnanesh/dsh-menubar#dsh-menubar",
                 }, function () {
                   return React.createElement(MenuBarSettings, null);
                 });

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.6
+
+- **Find in page**: ⌘F (or ⌃F) opens a native find bar over the window and searches the embedded dsh
+  interface with WebKit's own finder; ⌘G / ⇧⌘G walk matches, Esc dismisses the bar before it closes
+  the window. Without an Edit menu the chord had no command behind it, which is the same gap that
+  broke ⌘V.
+- The patch row id is now `dsh-menubar`, matching the package basename. With `id: menubar` the Plugins
+  page rendered our card with no version and no description, while every plugin that shows them has
+  `row id == package basename`. The row-config key followed the rename to
+  `@gnanesh/dsh-menubar#dsh-menubar`.
+
 ## v0.1.5
 
 Configuration now lives on the plugin row instead of a top-level Settings section.

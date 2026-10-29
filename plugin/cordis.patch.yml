@@ -18,7 +18,7 @@
 # those sessions ungrouped.
 
 - insert:
-    - id: menubar
+    - id: dsh-menubar
       name: '@gnanesh/dsh-menubar'
       config:
         token: !!js process.env.DSH_MENUBAR_TOKEN
