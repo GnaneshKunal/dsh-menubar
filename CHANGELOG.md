@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.7
+
+Configuration now renders **on the plugin's page**, not behind a Configure step.
+
+- Registered on `plugins.bundle.config`, keyed by the bundle's package name — the slot documented as
+  "rendered on the bundle's page between its description and its rows". This is the seat
+  `dsh-auto-continue`, `dsh-openrouter-plus`, `dsh-cost-meter` and `dsh-claude-style` all use.
+  Open Plugins → `@gnanesh/dsh-menubar` and the Window / Workspace / Menu bar app controls are right
+  there, under the description.
+- **Start actually starts again.** `bootstrap` already launches the app because the LaunchAgent has
+  `RunAtLoad`, and the follow-up `kickstart -k` killed that process and could fail to respawn, leaving
+  the job loaded but stopped. Start now bootstraps when unloaded, kickstarts only when loaded-but-down,
+  and reads the result back from `launchctl print` either way.
+- The app controls no longer dead-end when the first status read fails: state is polled every 4 s and
+  the buttons are disabled only while a request is in flight. A failed action shows the host's error
+  instead of silently doing nothing.
+
 ## v0.1.6
 
 - **Find in page**: ⌘F (or ⌃F) opens a native find bar over the window and searches the embedded dsh

@@ -109,30 +109,44 @@
           var [state, setState] = React.useState("loading");
           var [app, setApp] = React.useState(null);
           var [appBusy, setAppBusy] = React.useState(false);
+          var [appError, setAppError] = React.useState("");
           var [error, setError] = React.useState("");
 
+          var appTimer = null;
           function refreshApp() {
-            fetch("/menubar/app", { headers: { accept: "application/json" } })
-              .then(function (r) { return r.json(); })
-              .then(setApp)
-              .catch(function () { setApp(null); });
+            return fetch("/menubar/app", { headers: { accept: "application/json" } })
+              .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+              .then(function (value) { setApp(value); setAppBusy(false); return value; })
+              .catch(function (e) { setAppError(String(e && e.message ? e.message : e)); return null; });
           }
 
           function controlApp(action) {
             setAppBusy(true);
+            setAppError("");
             fetch("/menubar/app", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ action: action }),
             })
-              .then(function (r) { return r.json(); })
-              .then(setApp)
-              .catch(function (e) { setError(String(e)); })
+              .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+              .then(function (res) {
+                // A 500 carries {error}; surface it instead of pretending.
+                if (!res.ok) { setAppError(res.body && res.body.error ? res.body.error : "request failed"); }
+                else { setApp(res.body); }
+              })
+              .catch(function (e) { setAppError(String(e && e.message ? e.message : e)); })
               .then(function () { setAppBusy(false); });
           }
 
           React.useEffect(function () {
             refreshApp();
+            // Keep it live: the app can be quit from its own menu, and a failed
+            // first read must not leave the controls dead.
+            appTimer = setInterval(refreshApp, 4000);
+            return function () { if (appTimer) clearInterval(appTimer); };
+          }, []);
+
+          React.useEffect(function () {
             readPrefs().then(function (value) {
               setPrefs(value);
               setWorkspace(value.workspacePathResolved || value.workspacePath || "");
@@ -205,21 +219,24 @@
                   : "Stopped")),
                 React.createElement("button", {
                   style: S.button,
-                  disabled: appBusy || !app,
+                  disabled: appBusy,
                   onClick: function () { controlApp("start"); },
                 }, "Start"),
                 React.createElement("button", {
                   style: Object.assign({}, S.button, { background: "var(--dsw-alias-bg-layer-2)", color: "var(--dsw-alias-label-primary)", border: "1px solid var(--dsw-alias-border-l1)" }),
-                  disabled: appBusy || !app,
+                  disabled: appBusy,
                   onClick: function () { controlApp("restart"); },
                 }, "Restart"),
                 React.createElement("button", {
                   style: Object.assign({}, S.button, { background: "transparent", color: "var(--dsw-alias-label-secondary)", border: "1px solid var(--dsw-alias-border-l1)" }),
-                  disabled: appBusy || !app || !app.running,
+                  disabled: appBusy,
                   onClick: function () { controlApp("stop"); },
                 }, "Quit")),
               React.createElement("div", { style: S.hint },
-                "Quitting the app from its menu removes the whale from the menu bar; start it again here.")),
+                "Quitting the app from its menu removes the whale from the menu bar; start it again here."),
+              appError ? React.createElement("div", {
+                style: { fontSize: "11px", color: "var(--dsw-alias-state-error-primary)" },
+              }, appError) : null),
 
             React.createElement("div", { style: S.group },
               React.createElement("div", { style: S.label }, "Bridge"),
@@ -239,19 +256,19 @@
               try { console.warn("[dsh-menubar] settings page unavailable: slots or react missing"); } catch (e) {}
               return;
             }
-            // A bundle's configuration belongs on its own row: the row gains a
-            // configure control that opens this page, titled by the plugin.
-            // Key format is "<package name>#<row id>", as the patch declares it.
+            // Bundle-level configuration renders on the bundle's own page,
+            // between its description and its rows — no configure step. This is
+            // the seat auto-continue, openrouter-plus and cost-meter use.
             ctx.effect(function () {
-              return slots.inject("plugins.row.config", function () {
+              return slots.inject("plugins.bundle.config", function () {
                 return slots.register({
-                  name: "plugins.row.config",
-                  key: "@gnanesh/dsh-menubar#dsh-menubar",
+                  name: "plugins.bundle.config",
+                  key: "@gnanesh/dsh-menubar",
                 }, function () {
                   return React.createElement(MenuBarSettings, null);
                 });
               });
-            }, "dsh-menubar: row configuration");
+            }, "dsh-menubar: bundle configuration");
           } catch (e) {
             try {
               console.warn("[dsh-menubar] settings page failed to register: "

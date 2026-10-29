@@ -62,8 +62,10 @@ export async function appStart() {
   } catch {
     throw new Error(`no LaunchAgent at ${plist}`)
   }
-  // bootstrap registers the job asynchronously, so a kickstart issued straight
-  // after it can miss the service. Poll for registration first.
+  // RunAtLoad means bootstrap already launches the app; a kickstart -k straight
+  // after it kills that process and can fail to respawn, leaving the job loaded
+  // but stopped. So: bootstrap when unloaded, kickstart only when loaded-but-down,
+  // and in both cases read the outcome back instead of trusting an exit code.
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const waitForJob = async (attempts) => {
     for (let i = 0; i < attempts; i += 1) {
@@ -73,27 +75,35 @@ export async function appStart() {
     }
     return false
   }
+  const waitForRunning = async (attempts) => {
+    for (let i = 0; i < attempts; i += 1) {
+      const current = await appStatus()
+      if (current.running) return current
+      await sleep(300)
+    }
+    return null
+  }
 
-  if (!(await waitForJob(1))) {
+  const alreadyLoaded = await launchctl(['print', `${domain()}/${APP_LABEL}`]).then((r) => r.ok)
+  if (!alreadyLoaded) {
     const boot = await launchctl(['bootstrap', domain(), plist])
-    // "already bootstrapped" is success for our purpose.
     if (!boot.ok && !/already bootstrapped|service is already loaded/i.test(boot.message)) {
       throw new Error(`could not load the LaunchAgent: ${boot.message}`)
     }
     if (!(await waitForJob(12))) throw new Error('the LaunchAgent did not register after bootstrap')
+    const running = await waitForRunning(12)
+    if (running) return running
+    // Registered but idle: ask launchd to start it.
+    await launchctl(['kickstart', `${domain()}/${APP_LABEL}`])
+    const afterKick = await waitForRunning(12)
+    if (afterKick) return afterKick
+    throw new Error('the LaunchAgent registered but the app did not start')
   }
 
-  const kick = await launchctl(['kickstart', '-k', `${domain()}/${APP_LABEL}`])
-  if (!kick.ok) {
-    // kickstart -k reports failure when it races the process it just asked
-    // launchd to replace; poll the settled state rather than trusting the exit.
-    for (let i = 0; i < 8; i += 1) {
-      await sleep(300)
-      const current = await appStatus()
-      if (current.running) return current
-    }
-    throw new Error(`could not start the app: ${kick.message}`)
-  }
+  const kick = await launchctl(['kickstart', `${domain()}/${APP_LABEL}`])
+  const afterKick = await waitForRunning(12)
+  if (afterKick) return afterKick
+  throw new Error(`could not start the app: ${kick.message || 'it stayed stopped'}`)
   return appStatus()
 }
 

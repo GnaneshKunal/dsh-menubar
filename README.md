@@ -77,10 +77,11 @@ copy-paste and survives host restarts.
 
 Everything lives on the plugin's own row, which is where a bundle's configuration belongs:
 
-**Plugins → `@gnanesh/dsh-menubar` → the `menubar` row → Configure**
+**Plugins → `@gnanesh/dsh-menubar`** — the controls sit on the plugin page itself, between its
+description and its rows.
 
-Registered in `plugins.row.config` under the key `@gnanesh/dsh-menubar#menubar` (`<package name>#<row
-id>`). The page carries:
+Registered in `plugins.bundle.config`, keyed by the bundle's package name (the same seat
+`dsh-auto-continue`, `dsh-openrouter-plus` and `dsh-cost-meter` use). The page carries:
 
 - **Window** — *Full dsh interface* (default) or *Menu bar window*. Applies the next time the window
   opens; ⌃⌥Q reopens it.
@@ -102,7 +103,7 @@ source of truth over two surfaces:
 
 Two rules a client half must follow here, both learned the hard way:
 
-1. **Declare the slot before registering into it** — `ctx.slots.inject("plugins.row.config", () =>
+1. **Declare the slot before registering into it** — `ctx.slots.inject("plugins.bundle.config", () =>
    ctx.slots.register(...))`. Registering directly is rejected with *"slot is not declared (a parent
    entry's children table must declare it)"*.
 2. **A failing entry blocks the whole boot** (*"Failed to load plugins"*), and an inject edge naming a
