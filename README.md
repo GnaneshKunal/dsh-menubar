@@ -70,7 +70,8 @@ copy-paste and survives host restarts.
 
 ## Settings page
 
-The plugin contributes a **Menu Bar** section to DSH Settings (`settings.section`, order 25): choose
+The plugin contributes a configure page to its own row under Plugins (`plugins.row.config`, key
+`@gnanesh/dsh-menubar#menubar`), which is where a bundle's configuration belongs. There you can choose
 the window surface (full dsh interface vs. compact menu bar window), set the workspace new sessions
 join, and see the bridge URL and token file. Preferences live in `~/.dsh/menubar.json` and are read by
 both sides — the page through `GET/POST /menubar/prefs`, the app through the bridge's `menubar.prefs`
@@ -129,7 +130,7 @@ script is idempotent and stops if the entry or the PR already exists.
 
 ## Controls
 
-`Settings → Menubar` shows whether the app is running and lets you **Start**, **Restart** or **Quit**
+`Plugins → @gnanesh/dsh-menubar → Configure` shows whether the app is running and lets you **Start**, **Restart** or **Quit**
 it, backed by `GET`/`POST /menubar/app` on the plugin. Quitting from that page unloads the LaunchAgent,
 so the app stays down; Start loads it again, which is why a quit is recoverable without a terminal.
 

@@ -229,9 +229,8 @@
                 "The token is minted once and reused; delete that file to rotate it.")));
         }
 
-        // "slots" is a shell service (service inject). The settings.section slot
-        // is declared by the ui-settings *entry*, so the manifest carries a
-        // module edge to it; registering earlier is rejected as "not declared".
+        // "slots" is a shell service (service inject). The Plugins page declares
+        // the config slots, so those carry a module edge in the manifest.
         exports.inject = ["slots"];
         exports.apply = function (ctx) {
           try {
@@ -240,21 +239,19 @@
               try { console.warn("[dsh-menubar] settings page unavailable: slots or react missing"); } catch (e) {}
               return;
             }
-            // A slot must be declared through slots.inject before registering
-            // into it; registering directly is rejected with "slot is not
-            // declared (a parent entry's children table must declare it)".
+            // A bundle's configuration belongs on its own row: the row gains a
+            // configure control that opens this page, titled by the plugin.
+            // Key format is "<package name>#<row id>", as the patch declares it.
             ctx.effect(function () {
-              return slots.inject("settings.section", function () {
+              return slots.inject("plugins.row.config", function () {
                 return slots.register({
-                  name: "settings.section",
-                  id: "menubar",
-                  order: 25,
-                  label: function () { return "Menu Bar"; },
+                  name: "plugins.row.config",
+                  key: "@gnanesh/dsh-menubar#menubar",
                 }, function () {
                   return React.createElement(MenuBarSettings, null);
                 });
               });
-            }, "dsh-menubar: settings page");
+            }, "dsh-menubar: row configuration");
           } catch (e) {
             try {
               console.warn("[dsh-menubar] settings page failed to register: "

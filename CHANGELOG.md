@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.5
+
+Configuration now lives on the plugin row instead of a top-level Settings section.
+
+- Registered in `plugins.row.config` under the key `@gnanesh/dsh-menubar#menubar`
+  (`<package name>#<row id>`), which is where the framework says a bundle's configuration belongs.
+  The row on the bundle's page gains a configure control that opens the page, headed by the plugin's
+  title and description, next to its version, source and uninstall controls.
+- The top-level `settings.section` entry is gone, so Settings no longer carries a "Menu Bar" nav item
+  for a plugin that is manageable from Plugins.
+- The page still reads and writes `/menubar/prefs` and controls the app through `/menubar/app`.
+
 ## v0.1.4
 
 You can now start the app from Settings, so quitting it is no longer a one-way
