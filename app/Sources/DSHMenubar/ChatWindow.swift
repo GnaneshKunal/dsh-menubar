@@ -53,6 +53,33 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
           };
           window.addEventListener('error', (e) => post('error ' + (e.message || '') + ' @' + (e.filename || '') + ':' + (e.lineno || 0)));
           window.addEventListener('unhandledrejection', (e) => post('rejection ' + String(e.reason)));
+          window.dshInsertText = (text) => {
+            const el = document.activeElement;
+            if (!el) return false;
+            if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+              const start = el.selectionStart == null ? el.value.length : el.selectionStart;
+              const end = el.selectionEnd == null ? start : el.selectionEnd;
+              el.value = el.value.slice(0, start) + text + el.value.slice(end);
+              el.selectionStart = el.selectionEnd = start + text.length;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              return true;
+            }
+            if (el.isContentEditable) {
+              return document.execCommand('insertText', false, text);
+            }
+            return false;
+          };
+          window.addEventListener('paste', (e) => {
+            const files = e.clipboardData && e.clipboardData.files ? e.clipboardData.files.length : -1;
+            const text = e.clipboardData ? (e.clipboardData.getData('text/plain') || '').slice(0, 40) : '';
+            post('paste event files=' + files + ' text=' + JSON.stringify(text));
+          }, true);
+          window.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === 'v') {
+              const el = document.activeElement;
+              post('cmd-v target=' + (el ? el.tagName + '.' + String(el.className || '').slice(0, 30) : 'none'));
+            }
+          }, true);
           for (const level of ['warn', 'log']) {
             const originalLevel = console[level];
             console[level] = function (...args) {
@@ -77,7 +104,7 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             let isPaste = event.modifierFlags.contains(.command)
                 && event.charactersIgnoringModifiers?.lowercased() == "v"
             debugLog("monitor key: \(event.charactersIgnoringModifiers ?? "?") cmd=\(event.modifierFlags.contains(.command))")
-            guard isPaste, !self.embedded else { return event }
+            guard isPaste else { return event }
             return self.handlePaste() ? nil : event
         }
 
@@ -193,6 +220,15 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
           }),
           sidebarVisible: [...document.querySelectorAll('aside, [class*="sidebar"], [class*="Sidebar"]')]
             .some((el) => el.getBoundingClientRect().width > 100),
+          composer: (() => {
+            const el = document.querySelector('textarea, [contenteditable="true"]');
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { tag: el.tagName, x: Math.round(r.left), y: Math.round(r.top),
+                     w: Math.round(r.width), h: Math.round(r.height),
+                     focused: document.activeElement === el,
+                     text: String(el.innerText || el.value || '').slice(0, 40) };
+          })(),
         })
         """#
         webView.evaluateJavaScript(script) { value, error in
@@ -372,6 +408,33 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             debugLog("native paste: nothing usable on the pasteboard")
             return false
         }
+
+        if embedded {
+            // The embedded shell owns its own paste pipeline, and a menu item
+            // cannot drive it. Inject the text into whatever holds focus; image
+            // parts would need the shell's upload route, so they are reported
+            // rather than silently dropped.
+            let text = payloads.compactMap { $0["kind"] as? String == "text" ? $0["text"] as? String : nil }.first
+            let nonText = payloads.filter { ($0["kind"] as? String) != "text" }.count
+            if nonText > 0 {
+                debugLog("embedded paste: \(nonText) non-text item(s) ignored — paste images in the dsh browser window")
+            }
+            guard let text, !text.isEmpty else { return false }
+            if let data = try? JSONSerialization.data(withJSONObject: [text]),
+               let json = String(data: data, encoding: .utf8),
+               let array = (try? JSONSerialization.jsonObject(with: data)) as? [String],
+               let first = array.first {
+                _ = json
+                let escaped = first
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "\"", with: "\\\"")
+                    .replacingOccurrences(of: "\n", with: "\\n")
+                evaluate("window.dshInsertText && window.dshInsertText(\"\(escaped)\")")
+                debugLog("embedded paste: injected \(first.count) chars")
+                return true
+            }
+            return false
+        }
         debugLog("native paste: \(payloads.map { $0["kind"] as? String ?? "?" }.joined(separator: ","))")
         guard let data = try? JSONSerialization.data(withJSONObject: payloads),
               let json = String(data: data, encoding: .utf8)
@@ -445,14 +508,10 @@ final class ChatPanel: NSPanel {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        debugLog("keyEquivalent \(event.charactersIgnoringModifiers ?? "?") cmd=\(event.modifierFlags.contains(.command))")
-        let isPaste = event.type == .keyDown
-            && event.modifierFlags.contains(.command)
-            && event.charactersIgnoringModifiers?.lowercased() == "v"
-        if isPaste, pasteTarget?.handlePaste() == true {
-            return true
-        }
-        return super.performKeyEquivalent(with: event)
+        // ⌘V belongs to the local monitor in QuickAskController, which runs
+        // before key equivalents reach this view. Handling it here as well made
+        // a single keystroke paste three times.
+        super.performKeyEquivalent(with: event)
     }
 }
 
