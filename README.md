@@ -11,6 +11,20 @@ Two halves, one idea:
 | [`plugin/`](plugin) | A DeepSeek Harness host plugin. Mounts a token-authenticated WebSocket bridge and projects calls onto the host's own Typert Remotes. |
 | [`app/`](app) | A SwiftUI-free AppKit menu bar app. Hotkey → floating chat window → streaming answers, rendered from a local web UI. |
 
+## What it looks like
+
+The window, with the sidebar collapsed to its icon rail:
+
+![dsh-menubar window showing the dsh interface](assets/window.png)
+
+It is not a lookalike: that is the real dsh front end, booted inside the window through a
+pre-authenticated URL, so tool cards, approvals, tabs and theme tokens all come from the shell.
+
+The status item is dsh's own whale mark, drawn as a template image so it follows light and dark menu
+bars:
+
+![the whale status item](assets/whale-statusitem.png)
+
 ## Why a plugin instead of a subprocess
 
 The Host owns session state. A child process (`dsh --profile headless "…"`) writes a durable log but

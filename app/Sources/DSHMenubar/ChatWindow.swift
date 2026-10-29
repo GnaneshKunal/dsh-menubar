@@ -37,6 +37,14 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         let frame = NSRect(x: 0, y: 0, width: 640, height: 580)
         panel = ChatPanel(contentRect: frame, styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
         panel.minSize = NSSize(width: 460, height: 420)
+        // DSHBRIDGE_WINDOW_SIZE=1180x760 gives screenshots and tests a known
+        // frame instead of the default compact one.
+        if let spec = ProcessInfo.processInfo.environment["DSHBRIDGE_WINDOW_SIZE"] {
+            let parts = spec.lowercased().split(separator: "x").compactMap { Double($0) }
+            if parts.count == 2, parts[0] >= 460, parts[1] >= 420 {
+                panel.setContentSize(NSSize(width: parts[0], height: parts[1]))
+            }
+        }
         webView = WKWebView(frame: frame, configuration: config)
 
         super.init()
@@ -196,6 +204,21 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
                     await MainActor.run { self?.reportViewport(tag: "boot #\(attempt)") }
                 }
+                // DSHBRIDGE_EVAL runs one snippet after load — used to arrange the
+                // page (e.g. collapse the sidebar) before a snapshot.
+                if let script = ProcessInfo.processInfo.environment["DSHBRIDGE_EVAL"], !script.isEmpty {
+                    await MainActor.run {
+                        self?.webView.evaluateJavaScript(script) { value, error in
+                            debugLog("eval: \(error?.localizedDescription ?? String(describing: value))")
+                        }
+                    }
+                }
+                // DSHBRIDGE_SNAPSHOT_DELAY gives the operator time to arrange the
+                // window (collapse the sidebar, pick a session) before the shot.
+                let delay = Double(ProcessInfo.processInfo.environment["DSHBRIDGE_SNAPSHOT_DELAY"] ?? "2") ?? 2
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                if Task.isCancelled { return }
+                await MainActor.run { self?.maybeSnapshot() }
             }
             return
         }
@@ -237,6 +260,26 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             } else {
                 debugLog("\(tag) window=\(self.panel.frame.size) viewport=\(value ?? "?")")
             }
+        }
+    }
+
+    /// DSHBRIDGE_SNAPSHOT=/path/to.png writes the page exactly as rendered —
+    /// used to produce the README screenshots without desktop cropping.
+    private func maybeSnapshot() {
+        guard let path = ProcessInfo.processInfo.environment["DSHBRIDGE_SNAPSHOT"], !path.isEmpty else { return }
+        let configuration = WKSnapshotConfiguration()
+        configuration.rect = webView.bounds
+        webView.takeSnapshot(with: configuration) { image, error in
+            guard let image, let tiff = image.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else {
+                debugLog("snapshot failed: \(error?.localizedDescription ?? "no image")")
+                return
+            }
+            let url = URL(fileURLWithPath: path)
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? png.write(to: url)
+            debugLog("snapshot written: \(path) \(image.size)")
         }
     }
 

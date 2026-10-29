@@ -1,0 +1,82 @@
+name: Release
+
+# Pushing a tag is the release: verify it against the package manifest, publish
+# the GitHub release from CHANGELOG.md, and publish to npm when it is enabled.
+#
+# npm publishing is opt-in: set the repository variable NPM_PUBLISH=true once the
+# `dsh-menubar` package exists on npmjs.com and a trusted publisher is configured
+# (GitHub Actions, repository GnaneshKunal/dsh-menubar, workflow `release.yml`,
+# environment `release`). Until then the workflow only publishes the GitHub
+# release, and no token is stored here.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # OIDC: npm trusted publishing and provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+
+      # A tag that disagrees with the package would publish one version and claim another.
+      - name: Check the tag matches plugin/package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(node -p "require('./plugin/package.json').version")
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $tag does not match plugin/package.json $version"
+            exit 1
+          fi
+
+      - name: Syntax check every plugin entry
+        run: |
+          for file in plugin/index.js plugin/client.js plugin/src/*.js; do
+            node --check "$file"
+          done
+
+      - name: Use an OIDC-capable npm CLI
+        if: vars.NPM_PUBLISH == 'true'
+        run: npm install --global npm@latest
+
+      - name: Check whether npm already has this version
+        id: published
+        if: vars.NPM_PUBLISH == 'true'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if npm view "dsh-menubar@$version" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "npm already has $version; skipping the publish step"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: vars.NPM_PUBLISH == 'true' && steps.published.outputs.exists != 'true'
+        working-directory: plugin
+        run: npm publish --access public --provenance
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const version = process.env.GITHUB_REF_NAME.replace(/^v/, "");
+            const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
+            const start = changelog.indexOf("## v" + version);
+            if (start === -1) { console.error("no CHANGELOG section for " + version); process.exit(1); }
+            const rest = changelog.slice(start);
+            const next = rest.indexOf("\n## ", 1);
+            fs.writeFileSync("notes.md", (next === -1 ? rest : rest.slice(0, next)).trim() + "\n");
+          '
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
