@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DSH</title>
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1116;
+    --surface: #14171e;
+    --surface-2: #191d26;
+    --line: #242935;
+    --line-soft: #1c212b;
+    --text: #e7eaf0;
+    --muted: #8a93a5;
+    --faint: #5b6475;
+    --accent: #4d6bfe;
+    --accent-dim: rgba(77,107,254,.16);
+    --user-bubble: #1e2431;
+    --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.62 -apple-system, "SF Pro Text", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 10px; -webkit-app-region: drag;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  header .brand { font-weight: 650; font-size: 12.5px; letter-spacing: .3px; }
+  .pickers { display: flex; gap: 8px; padding: 0 16px 8px; }
+  header select.pill { -webkit-app-region: no-drag; }
+  header .spacer { flex: 1; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #f0a33c; flex: 0 0 auto; }
+  .dot.on { background: #3ecf8e; }
+  .dot.err { background: var(--danger); }
+  #status { color: var(--faint); font-size: 11px; white-space: nowrap; }
+  button.icon, button.close {
+    -webkit-app-region: no-drag;
+    background: transparent; border: 0; color: var(--muted);
+    border-radius: 7px; cursor: pointer; display: grid; place-items: center;
+  }
+  button.close { width: 22px; height: 22px; font-size: 13px; }
+  button.close:hover { background: var(--surface-2); color: var(--text); }
+
+  /* ---------- pills (native-ish selects) ---------- */
+  select.pill {
+    -webkit-appearance: none; appearance: none;
+    background: transparent; color: var(--muted);
+    border: 1px solid transparent; border-radius: 7px;
+    padding: 4px 18px 4px 7px; font-size: 11px; max-width: 240px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--faint) 50%),
+                      linear-gradient(135deg, var(--faint) 50%, transparent 50%);
+    background-position: calc(100% - 10px) 52%, calc(100% - 6px) 52%;
+    background-size: 4px 4px, 4px 4px; background-repeat: no-repeat;
+    cursor: pointer;
+  }
+  select.pill:hover { background-color: var(--surface-2); color: var(--text); }
+  select.pill:focus { outline: none; border-color: var(--line); color: var(--text); }
+
+  /* ---------- transcript ---------- */
+  #transcript { flex: 1; overflow-y: auto; padding: 18px 18px 6px; scroll-behavior: smooth; }
+  #empty { color: var(--faint); text-align: center; margin-top: 34%; font-size: 14px; }
+  .turn { margin-bottom: 18px; }
+  .user {
+    display: flex; justify-content: flex-end; margin-bottom: 10px;
+  }
+  .user .bubble {
+    background: var(--user-bubble); border: 1px solid var(--line-soft);
+    padding: 8px 12px; border-radius: 14px 14px 4px 14px;
+    max-width: 78%; white-space: pre-wrap; word-break: break-word;
+  }
+  .assistant { white-space: pre-wrap; word-break: break-word; padding-right: 8px; }
+  .assistant.failed { color: var(--danger); }
+  .assistant.thinking { color: var(--faint); }
+  .assistant pre {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 9px; padding: 10px 12px; overflow-x: auto;
+    margin: 10px 0; font-size: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: pre;
+  }
+  .assistant h1, .assistant h2, .assistant h3, .assistant h4 {
+    margin: 16px 0 8px; line-height: 1.3; font-weight: 650;
+  }
+  .assistant h1 { font-size: 17px; }
+  .assistant h2 { font-size: 15.5px; }
+  .assistant h3 { font-size: 14px; }
+  .assistant h4 { font-size: 13px; color: var(--muted); }
+  .assistant p { margin: 0 0 10px; }
+  .assistant p:last-child { margin-bottom: 0; }
+  .assistant ul, .assistant ol { margin: 0 0 10px; padding-left: 20px; }
+  .assistant li { margin: 3px 0; }
+  .assistant li > p { margin: 0; }
+  .assistant a { color: #8aa6ff; text-decoration: none; }
+  .assistant a:hover { text-decoration: underline; }
+  .assistant blockquote {
+    margin: 10px 0; padding: 2px 0 2px 12px;
+    border-left: 2px solid var(--line); color: var(--muted);
+  }
+  .assistant hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+  .assistant table { border-collapse: collapse; margin: 10px 0; font-size: 12.5px; width: 100%; }
+  .assistant th, .assistant td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; }
+  .assistant th { background: var(--surface); font-weight: 600; }
+  .assistant strong { font-weight: 650; }
+  .assistant code {
+    background: var(--surface); padding: 1px 5px; border-radius: 5px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+  }
+  .reasoning {
+    border: 1px solid var(--line-soft); border-radius: 9px;
+    background: var(--surface); margin: 0 0 10px; overflow: hidden;
+  }
+  .reasoning > summary {
+    cursor: pointer; list-style: none; padding: 6px 10px;
+    font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px;
+    user-select: none;
+  }
+  .reasoning > summary::-webkit-details-marker { display: none; }
+  .reasoning > summary::before {
+    content: ""; width: 0; height: 0; border-left: 4px solid currentColor;
+    border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent;
+    transition: transform .12s ease; transform: rotate(0deg);
+  }
+  .reasoning[open] > summary::before { transform: rotate(90deg); }
+  .reasoning > summary:hover { color: var(--text); }
+  .reasoning-body {
+    padding: 0 12px 10px; color: var(--muted); font-size: 12px;
+    white-space: pre-wrap; border-top: 1px solid var(--line-soft); padding-top: 8px;
+  }
+  .thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; justify-content: flex-end; }
+  .thumbs img { height: 84px; border-radius: 8px; border: 1px solid var(--line); }
+
+  /* ---------- composer ---------- */
+  footer { padding: 6px 14px 12px; }
+  .composer {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .composer:focus-within { border-color: #2f3543; }
+  .composer.drop { border-color: var(--accent); background: var(--accent-dim); }
+  #chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  #chips:empty { display: none; }
+  .chip {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 3px 7px; font-size: 11px; max-width: 240px;
+  }
+  .chip img { height: 20px; width: 20px; object-fit: cover; border-radius: 4px; }
+  .chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .x { cursor: pointer; color: var(--faint); }
+  .chip .x:hover { color: var(--danger); }
+
+  #input {
+    min-height: 26px; max-height: 150px; overflow-y: auto; outline: none;
+    white-space: pre-wrap; word-break: break-word; padding: 2px 2px 0; font-size: 13.5px;
+  }
+  #input:empty:before { content: attr(data-placeholder); color: var(--faint); }
+
+  .toolbar { display: flex; align-items: center; gap: 6px; }
+  .toolbar .spacer { flex: 1; }
+  button.attach {
+    width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--line);
+    background: transparent; color: var(--muted); font-size: 15px; line-height: 1;
+    cursor: pointer; display: grid; place-items: center;
+  }
+  button.attach:hover { background: var(--surface-2); color: var(--text); }
+  .tag {
+    font-size: 10.5px; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 6px; padding: 2px 7px; background: transparent;
+  }
+  button.send {
+    width: 26px; height: 26px; border-radius: 50%; border: 0;
+    background: var(--accent); color: white; font-size: 13px; cursor: pointer;
+    display: grid; place-items: center;
+  }
+  button.send:disabled { background: #2a3143; color: #6b7488; cursor: default; }
+  button.send.stop { background: #2a3143; color: #ff6b6b; font-size: 10px; }
+  button.send.stop:hover { background: #3a2430; }
+  button.send.stop[hidden] { display: none; }
+  .hint { color: var(--faint); font-size: 10px; padding: 7px 4px 0; display: flex; gap: 14px; }
+</style>
+</head>
+<body>
+  <header>
+    <span class="brand">DSH</span>
+    <span class="dot" id="dot"></span>
+    <span id="status">connecting…</span>
+    <span class="spacer"></span>
+    <button class="close" id="close" title="Close (Esc)">✕</button>
+  </header>
+
+  <div class="pickers">
+    <select id="sessionSel" class="pill" title="Session"><option value="">New session</option></select>
+  </div>
+
+  <main id="transcript"><div id="empty">Ask dsh anything</div></main>
+
+  <footer>
+    <div class="composer" id="composer">
+      <div id="chips"></div>
+      <div id="input" contenteditable="true" data-placeholder="Ask dsh anything… paste text, images or files"></div>
+      <div class="toolbar">
+        <button class="attach" id="attach" title="Attach files">+</button>
+        <span class="tag" title="Inherited from your dsh session">Full access</span>
+        <span class="spacer"></span>
+        <select id="modelSel" class="pill" title="Model"><option value="">Default model</option></select>
+        <button class="send" id="send" title="Send (⏎)">↑</button>
+        <button class="send stop" id="stop" title="Stop (esc)" hidden>■</button>
+      </div>
+    </div>
+    <div class="hint"><span>⏎ send</span><span>⇧⏎ newline</span><span>esc close</span></div>
+  </footer>
+
+  <input type="file" id="filePick" multiple hidden />
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const state = {
+  ws: null, token: "", wsUrl: "", workspacePath: "",
+  ready: false, seq: 0, pending: new Map(),
+  sessions: [], models: [], sessionId: null, busy: false,
+  attachments: [], exchanges: [],
+};
+
+function log(message) {
+  try { window.webkit.messageHandlers.dsh.postMessage({ type: "log", message: String(message) }); } catch (_) {}
+}
+function post(type, extra) {
+  try { window.webkit.messageHandlers.dsh.postMessage(Object.assign({ type }, extra || {})); } catch (_) {}
+}
+
+/* ------------------------------------------------ transport */
+function connect() {
+  if (!state.wsUrl || !state.token) { setStatus("no bridge config", "err"); return; }
+  const ws = new WebSocket(state.wsUrl);
+  state.ws = ws;
+  ws.onopen = () => ws.send(JSON.stringify({ t: "hello", token: state.token, client: "webview" }));
+  ws.onmessage = (event) => handle(JSON.parse(event.data));
+  ws.onclose = () => { state.ready = false; setStatus("disconnected", "err"); };
+  ws.onerror = () => setStatus("connection error", "err");
+}
+
+function handle(frame) {
+  if (frame.t === "hello.ok") {
+    state.ready = true;
+    if (frame.workspacePath) state.workspacePath = frame.workspacePath;
+    setStatus("connected", "on");
+    refreshSessions(); refreshModels();
+    return;
+  }
+  if (frame.t === "rpc.result") {
+    const slot = state.pending.get(frame.id);
+    if (!slot) return;
+    state.pending.delete(frame.id);
+    if (frame.ok) slot.resolve(frame.value);
+    else slot.reject(new Error((frame.error && frame.error.message) || "host error"));
+    return;
+  }
+  if (frame.t === "event") { onFollowFrame(frame.payload); return; }
+  if (frame.t === "ping") state.ws.send(JSON.stringify({ t: "pong" }));
+}
+
+function rpc(method, payload, timeout = 180000) {
+  return new Promise((resolve, reject) => {
+    const id = `w${++state.seq}`;
+    state.pending.set(id, { resolve, reject });
+    state.ws.send(JSON.stringify({ t: "rpc", id, method, payload: payload || {} }));
+    setTimeout(() => {
+      if (state.pending.has(id)) { state.pending.delete(id); reject(new Error(method + " timed out")); }
+    }, timeout);
+  });
+}
+
+function setStatus(text, kind) {
+  $("status").textContent = text;
+  $("dot").className = "dot" + (kind ? " " + kind : "");
+}
+
+/* ------------------------------------------------ sessions + models */
+async function refreshSessions() {
+  try {
+    const value = await rpc("session.list", {}, 120000);
+    const items = (value && value.items) || [];
+    state.sessions = items
+      .filter((item) => String(item.cwd || "").endsWith("menubar-sessions"))
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .map((item) => {
+        const title = item.projections && item.projections.values && item.projections.values.title;
+        const short = String(item.sessionId).replace("session-", "").slice(0, 8);
+        return { id: item.sessionId, label: title || ("session " + short) };
+      });
+    renderSessions();
+    log('sessions: ' + state.sessions.length + ' first="' + ((state.sessions[0] || {}).label || "") + '"');
+  } catch (error) { log("session.list failed: " + error.message); }
+}
+
+function renderSessions() {
+  const sel = $("sessionSel");
+  sel.innerHTML = '<option value="">New session</option>';
+  for (const session of state.sessions) {
+    const option = document.createElement("option");
+    option.value = session.id;
+    option.textContent = session.label;
+    sel.appendChild(option);
+  }
+  sel.value = state.sessionId || "";
+  if (!state.sessionId) {
+    document.title = "DSH";
+  } else {
+    const match = state.sessions.find((s) => s.id === state.sessionId);
+    document.title = match ? match.label : "DSH";
+  }
+}
+
+async function refreshModels() {
+  try {
+    const value = await rpc("session.models", {}, 60000);
+    const groups = (value && value.groups) || [];
+    state.models = [];
+    for (const group of groups) {
+      for (const model of (group.models || [])) {
+        state.models.push({ provider: group.id, model: model.id, label: group.id + " · " + (model.name || model.id) });
+      }
+    }
+    const sel = $("modelSel");
+    sel.innerHTML = '<option value="">Default model</option>';
+    for (const model of state.models) {
+      const option = document.createElement("option");
+      option.value = model.provider + "\u0001" + model.model;
+      option.textContent = model.label;
+      sel.appendChild(option);
+    }
+    log("models: " + state.models.length);
+  } catch (error) { log("session.models failed: " + error.message); }
+}
+
+/* ------------------------------------------------ transcript */
+function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/// Render assistant markdown with a real parser (GFM: headings, lists, tables,
+/// links, blockquotes, fenced code), then sanitize — model output is untrusted
+/// text that ends up in a page holding a native bridge.
+function renderMarkdown(text) {
+  if (typeof marked === "undefined") return escapeHtml(text).replace(/\n/g, "<br>");
+  try {
+    const html = marked.parse(text, { gfm: true, breaks: true });
+    return typeof DOMPurify !== "undefined" ? DOMPurify.sanitize(html) : html;
+  } catch (error) {
+    log("markdown failed: " + error.message);
+    return escapeHtml(text).replace(/\n/g, "<br>");
+  }
+}
+
+function renderTranscript(keepScroll) {
+  const host = $("transcript");
+  if (!state.exchanges.length) {
+    host.innerHTML = '<div id="empty">Ask dsh anything</div>';
+    return;
+  }
+  host.innerHTML = "";
+  for (const turn of state.exchanges) {
+    const wrap = document.createElement("div");
+    wrap.className = "turn";
+
+    const user = document.createElement("div");
+    user.className = "user";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = turn.question;
+    user.appendChild(bubble);
+    wrap.appendChild(user);
+
+    if (turn.images && turn.images.length) {
+      const thumbs = document.createElement("div");
+      thumbs.className = "thumbs";
+      for (const src of turn.images) {
+        const img = document.createElement("img");
+        img.src = src;
+        thumbs.appendChild(img);
+      }
+      wrap.appendChild(thumbs);
+    }
+
+    if (turn.thinking && turn.thinking.trim()) {
+      const details = document.createElement("details");
+      details.className = "reasoning";
+      details.open = !!turn.thinkingOpen;
+      details.addEventListener("toggle", () => { turn.thinkingOpen = details.open; });
+      const summary = document.createElement("summary");
+      summary.textContent = "Think";
+      const body = document.createElement("div");
+      body.className = "reasoning-body";
+      body.textContent = turn.thinking;
+      details.appendChild(summary);
+      details.appendChild(body);
+      wrap.appendChild(details);
+    }
+
+    const answer = document.createElement("div");
+    answer.className = "assistant" + (turn.failed ? " failed" : "") + (turn.answer == null ? " thinking" : "");
+    answer.innerHTML = turn.answer == null ? "thinking…" : renderMarkdown(turn.answer);
+    wrap.appendChild(answer);
+
+    host.appendChild(wrap);
+  }
+  const wasAtBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 60;
+  if (!keepScroll || wasAtBottom) host.scrollTop = host.scrollHeight;
+}
+
+/* ------------------------------------------------ history */
+
+/// Rebuild the transcript from one session's durable log.
+///
+/// Only user-role messages whose source kind is `user` become questions: dsh
+/// also records injected context (runtime snapshot, skill catalogue, reminders)
+/// as user-role messages, and those would otherwise flood the view.
+async function loadHistory(sessionId) {
+  const value = await rpc("session.history", { sessionId }, 60000);
+  const records = (value && value.records) || [];
+  const turns = [];
+
+  for (const record of records) {
+    const event = record && record.event;
+    if (!event) continue;
+
+    if (event.type === "user/message") {
+      const data = event.data || {};
+      const source = (data.source && data.source.kind) || "user";
+      const message = data.message || data;
+      const content = message.content || [];
+      const text = content
+        .filter((part) => part && part.type === "text")
+        .map((part) => part.text)
+        .join("\n");
+      if (source !== "user" || !text || !text.trim()) continue;
+      turns.push({ question: text, answer: null, failed: false, images: [], thinking: '', thinkingOpen: false });
+      continue;
+    }
+
+    if (event.type === "assistant/message") {
+      const content = (event.data && event.data.message && event.data.message.content) || [];
+      const text = content
+        .filter((part) => part && part.type === "text")
+        .map((part) => part.text)
+        .join("");
+      const last = turns[turns.length - 1];
+      if (last && !last.answer && text && text.trim()) last.answer = text;
+    }
+  }
+
+  state.exchanges = turns;
+  renderTranscript();
+  log("history: " + turns.length + " turns for " + sessionId);
+}
+
+/* ------------------------------------------------ live stream */
+
+/// The bridge forwards `session/follow` frames as `event` messages while a turn
+/// runs: `assistant-stream` start/chunk/end for tokens and reasoning, plus the
+/// durable `event` entries that settle the turn.
+const stream = {
+  active: false,
+  sessionId: null,
+  turn: null,
+  text: "",
+  thinking: "",
+  timer: null,
+  resolve: null,
+};
+
+function resetStream() {
+  clearTimeout(stream.timer);
+  stream.active = false;
+  stream.sessionId = null;
+  stream.turn = null;
+  stream.text = "";
+  stream.thinking = "";
+  stream.timer = null;
+  stream.resolve = null;
+}
+
+function scheduleRender() {
+  if (stream.timer) return;
+  stream.timer = setTimeout(() => {
+    stream.timer = null;
+    if (!stream.turn) return;
+    stream.turn.answer = stream.text || null;
+    stream.turn.thinking = stream.thinking;
+    renderTranscript(true);
+  }, 60);
+}
+
+function applyChunk(frame) {
+  const chunk = frame.chunk;
+  if (!chunk) return;
+  if (chunk.type === "text-delta" && chunk.text) stream.text += chunk.text;
+  else if (chunk.type === "reasoning-delta" && chunk.text) stream.thinking += chunk.text;
+  else return;
+  scheduleRender();
+}
+
+function onFollowFrame(payload) {
+  if (!stream.active || !payload) return;
+  if (payload.type === "assistant-stream" && payload.frame) {
+    const frame = payload.frame;
+    if (frame.type === "chunk") applyChunk(frame);
+    return;
+  }
+  if (payload.type === "follow-error") {
+    log("follow error: " + ((payload.error && payload.error.message) || "unknown"));
+    finishStream();
+    return;
+  }
+  if (payload.type === "event" && payload.event) {
+    const event = payload.event;
+    if (event.type === "assistant/message") {
+      const content = (event.data && event.data.message && event.data.message.content) || [];
+      const settled = content.filter((part) => part && part.type === "text").map((part) => part.text).join("");
+      if (settled && settled.trim()) stream.text = settled;
+      scheduleRender();
+      return;
+    }
+    if (event.type === "turn/end") finishStream();
+  }
+}
+
+/// Ask the host to cancel the running turn; the stream settles its own end.
+async function stopTurn() {
+  const sessionId = state.sessionId;
+  log("stop requested for " + sessionId);
+  try {
+    if (sessionId) await rpc("session.cancel", { sessionId }, 30000);
+  } catch (error) {
+    log("cancel failed: " + error.message);
+  }
+  finishStream();
+}
+
+function finishStream() {
+  if (!stream.active) return;
+  const resolve = stream.resolve;
+  resetStream();
+  if (resolve) resolve();
+}
+
+/* ------------------------------------------------ attachments *//* ------------------------------------------------ attachments */
+function chipsRender() {
+  const host = $("chips");
+  host.innerHTML = "";
+  state.attachments.forEach((attachment, index) => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    if (attachment.kind === "image") {
+      const img = document.createElement("img");
+      img.src = attachment.data;
+      chip.appendChild(img);
+    } else {
+      const icon = document.createElement("span");
+      icon.textContent = "📄";
+      chip.appendChild(icon);
+    }
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = attachment.name;
+    chip.appendChild(name);
+    const remove = document.createElement("span");
+    remove.className = "x";
+    remove.textContent = "✕";
+    remove.onclick = () => { state.attachments.splice(index, 1); chipsRender(); };
+    chip.appendChild(remove);
+    host.appendChild(chip);
+  });
+}
+
+function readFileEntry(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    if (file.type.startsWith("image/")) {
+      reader.onload = () => resolve({ kind: "image", name: file.name || "image", mediaType: file.type, data: String(reader.result) });
+      reader.readAsDataURL(file);
+      return;
+    }
+    const textLike = file.type.startsWith("text/") ||
+      /\.(txt|md|json|ya?ml|ts|tsx|js|jsx|py|swift|sh|css|html|xml|csv|log|toml)$/i.test(file.name || "");
+    if (!textLike || file.size > 2_000_000) {
+      resolve({ kind: "file", name: file.name || "file", mediaType: file.type, text: null });
+      return;
+    }
+    reader.onload = () => resolve({ kind: "file", name: file.name || "file", mediaType: file.type || "text/plain", text: String(reader.result).slice(0, 20000) });
+    reader.readAsText(file);
+  });
+}
+
+async function addFiles(files) {
+  for (const file of files) state.attachments.push(await readFileEntry(file));
+  chipsRender();
+  log("attachments: " + state.attachments.length + " → " + state.attachments.map((a) => a.kind + ":" + a.name).join(", "));
+}
+
+/* ------------------------------------------------ composer */
+function wireComposer() {
+  const input = $("input");
+
+  input.addEventListener("paste", async (event) => {
+    const data = event.clipboardData;
+    if (!data) return;
+    const files = [];
+    for (const item of data.items || []) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length) { event.preventDefault(); await addFiles(files); }
+  });
+
+  input.addEventListener("dragover", (event) => { event.preventDefault(); $("composer").classList.add("drop"); });
+  input.addEventListener("dragleave", () => $("composer").classList.remove("drop"));
+  input.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    $("composer").classList.remove("drop");
+    if (event.dataTransfer && event.dataTransfer.files.length) await addFiles(event.dataTransfer.files);
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
+    if (event.key === "Escape") post("close");
+  });
+
+  $("attach").onclick = () => $("filePick").click();
+  $("filePick").onchange = async (event) => {
+    if (event.target.files && event.target.files.length) await addFiles(event.target.files);
+    event.target.value = "";
+  };
+  $("send").onclick = () => send();
+  $("stop").onclick = () => stopTurn();
+  $("close").onclick = () => post("close");
+  $("sessionSel").onchange = async (event) => {
+    const id = event.target.value || null;
+    state.sessionId = id;
+    if (!id) {
+      state.exchanges = [];
+      renderTranscript();
+      document.title = "DSH";
+      log("session selected: new");
+      return;
+    }
+    log("session selected: " + id);
+    try { await loadHistory(id); }
+    catch (error) { log("history failed: " + error.message); }
+  };
+}
+
+function partsFromComposer() {
+  const text = $("input").innerText.trim();
+  const parts = [];
+  if (text) parts.push({ type: "text", text });
+  for (const attachment of state.attachments) {
+    if (attachment.kind === "image") {
+      const comma = attachment.data.indexOf(",");
+      parts.push({ type: "image", mediaType: attachment.mediaType || "image/png", data: attachment.data.slice(comma + 1), name: attachment.name });
+    } else if (attachment.text != null) {
+      parts.push({ type: "text", text: "📄 " + attachment.name + "\n\n" + attachment.text });
+    } else {
+      parts.push({ type: "text", text: "📄 attached file: " + attachment.name + " (" + (attachment.mediaType || "binary") + ")" });
+    }
+  }
+  return parts;
+}
+
+async function send() {
+  if (state.busy) return;
+  const parts = partsFromComposer();
+  if (!parts.length) return;
+
+  const question = $("input").innerText.trim() || "(attachment)";
+  const images = state.attachments.filter((a) => a.kind === "image").map((a) => a.data);
+  const turn = { question, answer: null, failed: false, images };
+  state.exchanges.push(turn);
+  renderTranscript();
+
+  $("input").innerText = "";
+  state.attachments = [];
+  chipsRender();
+  state.busy = true;
+  $("send").disabled = true;
+  $("send").hidden = true;
+  $("stop").hidden = false;
+
+  try {
+    let sessionId = state.sessionId;
+    if (!sessionId) {
+      const created = await rpc("session.create", {});
+      sessionId = created.sessionId;
+      state.sessionId = sessionId;
+      renderSessions();
+      log("created session " + sessionId);
+      post("session-changed", { sessionId });
+    }
+    const modelValue = $("modelSel").value;
+    if (modelValue) {
+      const [provider, model] = modelValue.split("\u0001");
+      try { await rpc("session.selectModel", { sessionId, provider, model }, 30000); }
+      catch (error) { log("selectModel failed: " + error.message); }
+    }
+    resetStream();
+    stream.active = true;
+    stream.sessionId = sessionId;
+    stream.turn = turn;
+    const settled = new Promise((resolve) => { stream.resolve = resolve; });
+    await rpc("session.follow", { sessionId }, 30000);
+
+    await rpc("session.prompt", { sessionId, content: parts });
+    await settled;
+
+    // The log is authoritative for the settled answer; the stream only made it
+    // readable while it was being produced.
+    try {
+      const snapshot = await history(sessionId);
+      if (snapshot.last && snapshot.last.trim()) turn.answer = snapshot.last;
+    } catch (error) { log("final history failed: " + error.message); }
+    if (!turn.answer || !turn.answer.trim()) turn.answer = "(the turn finished without text — it likely ran tools)";
+    renderTranscript();
+    post("answer", { text: turn.answer });
+    refreshSessions();
+  } catch (error) {
+    turn.answer = "⚠︎ " + error.message;
+    turn.failed = true;
+    renderTranscript();
+    log("ask failed: " + error.message);
+  } finally {
+    state.busy = false;
+    $("send").disabled = false;
+    $("send").hidden = false;
+    $("stop").hidden = true;
+    $("input").focus();
+  }
+}
+
+async function history(sessionId) {
+  const value = await rpc("session.history", { sessionId }, 60000);
+  const records = (value && value.records) || [];
+  let count = 0, last = "";
+  for (const record of records) {
+    const event = record && record.event;
+    if (!event || event.type !== "assistant/message") continue;
+    count += 1;
+    const content = (event.data && event.data.message && event.data.message.content) || [];
+    const text = content.filter((part) => part.type === "text").map((part) => part.text).join("");
+    // A turn can emit several assistant steps (tool calls first). Keep the
+    // last one that actually carries prose, or the answer disappears.
+    if (text && text.trim()) last = text;
+  }
+  return { count, last };
+}
+/* ------------------------------------------------ bootstrap */
+window.dshBootstrap = function (config) {
+  state.wsUrl = config.wsUrl;
+  state.token = config.token;
+  state.workspacePath = config.workspacePath;
+  connect();
+};
+window.dshFocus = function () { $("input").focus(); };
+
+/// Called on every reopen: the window is sticky, so a reopen starts a new
+/// conversation. Picking a session in the header still continues that one.
+window.dshReset = function () {
+  state.sessionId = null;
+  state.exchanges = [];
+  state.attachments = [];
+  state.busy = false;
+  $("input").innerText = "";
+  $("send").disabled = false;
+  chipsRender();
+  renderTranscript();
+  renderSessions();
+  document.title = "DSH";
+  log("reset: new session for this open");
+};
+
+/// Called on every reopen: the window is sticky, so a reopen is a new
+/// conversation. Picking a session in the header still continues that one.
+window.dshReset = function () {
+  state.sessionId = null;
+  state.exchanges = [];
+  state.attachments = [];
+  state.busy = false;
+  $("input").innerText = "";
+  $("send").disabled = false;
+  chipsRender();
+  renderTranscript();
+  renderSessions();
+  document.title = "DSH";
+  log("reset: new session for this open");
+};
+
+/// Payloads delivered by the Swift side, which owns the real clipboard.
+window.dshNativePaste = function (payloads) {
+  const input = $("input");
+  input.focus();
+  for (const payload of payloads || []) {
+    if (payload.kind === "text") {
+      document.execCommand("insertText", false, payload.text);
+    } else if (payload.kind === "image") {
+      state.attachments.push({
+        kind: "image",
+        name: payload.name || "image",
+        mediaType: payload.mediaType || "image/png",
+        data: payload.dataURL,
+      });
+    } else if (payload.kind === "file") {
+      state.attachments.push({
+        kind: "file",
+        name: payload.name || "file",
+        mediaType: "text/plain",
+        text: payload.text == null ? null : String(payload.text),
+      });
+    }
+  }
+  chipsRender();
+  log("native paste applied: " + (payloads || []).map((p) => p.kind).join(",") +
+      " | attachments now " + state.attachments.length);
+};
+
+window.dshTest = {
+  ready: () => state.ready,
+  sessions: () => state.sessions.map((s) => s.label),
+  models: () => state.models.map((m) => m.label),
+  transcript: () => state.exchanges.map((e) => ({ q: e.question, a: e.answer })),
+  hasComposer: () => !!$("input") && !!$("send") && !!$("modelSel"),
+  ask: (text) => { $("input").innerText = text; return send(); },
+  close: () => post("close"),
+};
+
+wireComposer();
+renderTranscript();
+</script>
+</body>
+</html>

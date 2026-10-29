@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Swift build products
+app/.build/
+*.xcodeproj
+
+# plugin dependencies
+plugin/node_modules/
+plugin/pnpm-lock.yaml
+
+# logs and local artifacts
+*.log

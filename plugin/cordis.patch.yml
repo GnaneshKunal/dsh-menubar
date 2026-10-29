@@ -1,0 +1,26 @@
+# Swift bridge layer for the dsh `web` profile.
+#
+# Mounts a token-authenticated WebSocket carrier at /menubar/bridge that a native
+# macOS (Swift) app connects to. The bridge projects the client's calls onto
+# dsh's own Typert Remotes (session.create / session.prompt / workspace.create),
+# so sessions it creates are first-class: they appear in the GUI session list,
+# resume, fork, and replay like any other session.
+#
+# On first boot the plugin generates a bearer token and persists it at
+# ~/.dsh/menubar-token (chmod 0600). The Swift app reads that file at
+# launch, so reconnecting never needs a copy-paste. Set DSH_SWIFT_TOKEN to pin
+# a fixed token instead (e.g. for a remote deployment).
+#
+# Sessions default to the ~/.dsh/menubar-sessions workspace, which the plugin
+# creates and registers on the first implicit session.create — the GUI shows a
+# `menubar-sessions` group next to `browser-sessions`. Set
+# DSH_SWIFT_SESSION_WORKSPACE to another path, or to an empty string to keep
+# those sessions ungrouped.
+
+- insert:
+    - id: menubar
+      name: 'dsh-menubar'
+      config:
+        token: !!js process.env.DSH_SWIFT_TOKEN
+        workspacePath: !!js process.env.DSH_SWIFT_SESSION_WORKSPACE
+        path: /menubar/bridge

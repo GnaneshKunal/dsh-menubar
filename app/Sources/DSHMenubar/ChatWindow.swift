@@ -1,0 +1,321 @@
+import AppKit
+import WebKit
+
+/// The chat window: a floating, draggable panel whose content is the web UI in
+/// `Resources/ui.html`.
+///
+/// The composer is a real web composer on purpose — pasting text, images and
+/// files, drag-and-drop, and rich rendering are things the web platform already
+/// does well; re-implementing them in AppKit would be a permanent tax for a
+/// worse result.
+final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageHandler, PasteHandling, NSWindowDelegate {
+
+    private let panel: ChatPanel
+    private let webView: WKWebView
+    private var loaded = false
+    private var pendingBootstrap: String?
+
+    private var pasteMonitor: Any?
+    private var lastCloseAt = Date.distantPast
+    var closedRecently: Bool { Date().timeIntervalSince(lastCloseAt) < 0.25 }
+    var isShown: Bool { panel.isVisible }
+
+    override init() {
+        let config = WKWebViewConfiguration()
+        let controller = WKUserContentController()
+        config.userContentController = controller
+        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+
+        let frame = NSRect(x: 0, y: 0, width: 640, height: 580)
+        panel = ChatPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        webView = WKWebView(frame: frame, configuration: config)
+
+        super.init()
+
+        controller.add(self, name: "dsh")
+        panel.pasteTarget = self
+
+        // A local monitor runs before the event is dispatched, so ⌘V cannot be
+        // swallowed by WebKit's DOM paste handling (which reports no files for
+        // a file:// page). Returning nil consumes the event.
+        pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.panel.isVisible else { return event }
+            let isPaste = event.modifierFlags.contains(.command)
+                && event.charactersIgnoringModifiers?.lowercased() == "v"
+            debugLog("monitor key: \(event.charactersIgnoringModifiers ?? "?") cmd=\(event.modifierFlags.contains(.command))")
+            guard isPaste else { return event }
+            return self.handlePaste() ? nil : event
+        }
+
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.isMovableByWindowBackground = true
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.isReleasedWhenClosed = false
+
+        let container = NSView(frame: frame)
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 16
+        container.layer?.masksToBounds = true
+        container.autoresizingMask = [.width, .height]
+        webView.autoresizingMask = [.width, .height]
+        webView.setValue(false, forKey: "drawsBackground")
+        container.addSubview(webView)
+        panel.contentView = container
+
+        // Title strip is draggable; it stops short of the close button so that
+        // control keeps receiving clicks.
+        let drag = DragHandle(frame: .zero)
+        drag.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(drag)
+        NSLayoutConstraint.activate([
+            drag.topAnchor.constraint(equalTo: container.topAnchor),
+            drag.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            drag.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -56),
+            drag.heightAnchor.constraint(equalToConstant: 38),
+        ])
+
+        panel.delegate = self
+        webView.navigationDelegate = self
+        loadPage()
+    }
+
+    deinit {
+        if let pasteMonitor { NSEvent.removeMonitor(pasteMonitor) }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        debugLog("window moved to \(panel.frame.origin)")
+    }
+
+    // MARK: - Page
+
+    private func loadPage() {
+        guard let url = Bundle.module.url(forResource: "ui", withExtension: "html") else {
+            debugLog("ui.html missing from bundle")
+            return
+        }
+        webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loaded = true
+        if let pending = pendingBootstrap {
+            evaluate(pending)
+            pendingBootstrap = nil
+        }
+        debugLog("web ui loaded")
+    }
+
+    private func evaluate(_ script: String) {
+        webView.evaluateJavaScript(script) { _, error in
+            if let error { debugLog("js error: \(error.localizedDescription)") }
+        }
+    }
+
+    /// Hand the page its token and bridge URL, then let it connect.
+    func configure(wsURL: String, token: String, workspacePath: String) {
+        let config: [String: Any] = ["wsUrl": wsURL, "token": token, "workspacePath": workspacePath]
+        guard let data = try? JSONSerialization.data(withJSONObject: config),
+              let json = String(data: data, encoding: .utf8)
+        else { return }
+        let script = "window.dshBootstrap(\(json))"
+        if loaded { evaluate(script) } else { pendingBootstrap = script }
+    }
+
+    // MARK: - Presentation
+
+    func present() {
+        centerNearTop()
+        // An accessory app cannot reliably become the active app, and a web view
+        // needs real key focus for typing and ⌘V. Promoting to `.regular` while
+        // the window is open is the reliable way to claim focus; the Dock icon
+        // disappears again when the window closes.
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+        if loaded {
+            // Every reopen starts a fresh conversation: the window is sticky, so
+            // "open it again" is the natural "new session" gesture.
+            evaluate("window.dshReset && window.dshReset()")
+            evaluate("window.dshFocus && window.dshFocus()")
+        }
+        debugLog("window shown at \(panel.frame)")
+    }
+
+    func close() {
+        lastCloseAt = Date()
+        panel.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
+        debugLog("window closed")
+    }
+
+    private func centerNearTop() {
+        guard let screen = NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        let size = panel.frame.size
+        panel.setFrameOrigin(NSPoint(x: visible.midX - size.width / 2,
+                                     y: visible.maxY - size.height - 110))
+    }
+
+    // MARK: - Page messages
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let type = body["type"] as? String
+        else { return }
+        switch type {
+        case "close":
+            close()
+        case "log":
+            debugLog("ui: \(body["message"] as? String ?? "")")
+        case "answer":
+            debugLog("ui answer: \(body["text"] as? String ?? "")")
+        default:
+            break
+        }
+    }
+
+    // MARK: - Paste (native clipboard)
+
+    /// Read `NSPasteboard` and hand the payload to the page.
+    ///
+    /// Order matters: an image dragged from a browser often also carries a
+    /// string and a URL, and the image is what the user meant.
+    func handlePaste() -> Bool {
+        debugLog("handlePaste called; isShown=\(panel.isVisible) key=\(panel.isKeyWindow)")
+        let pasteboard = NSPasteboard.general
+        var payloads: [[String: Any]] = []
+
+        let imageTypes: [NSPasteboard.PasteboardType] = [
+            .png, .tiff, NSPasteboard.PasteboardType("public.jpeg"),
+            NSPasteboard.PasteboardType("public.heic"),
+        ]
+        if let type = pasteboard.availableType(from: imageTypes),
+           let data = pasteboard.data(forType: type) {
+            let mediaType = type == .png ? "image/png" : "image/jpeg"
+            let base64 = data.base64EncodedString()
+            payloads.append([
+                "kind": "image",
+                "name": "pasted image",
+                "mediaType": mediaType,
+                "dataURL": "data:\(mediaType);base64,\(base64)",
+            ])
+        } else if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+                  !urls.isEmpty {
+            for url in urls {
+                if let image = NSImage(contentsOf: url),
+                   let tiff = image.tiffRepresentation,
+                   let rep = NSBitmapImageRep(data: tiff),
+                   let png = rep.representation(using: .png, properties: [:]) {
+                    payloads.append([
+                        "kind": "image",
+                        "name": url.lastPathComponent,
+                        "mediaType": "image/png",
+                        "dataURL": "data:image/png;base64,\(png.base64EncodedString())",
+                    ])
+                } else if let text = try? String(contentsOf: url, encoding: .utf8), text.count < 20000 {
+                    payloads.append(["kind": "file", "name": url.lastPathComponent, "text": text])
+                } else {
+                    payloads.append(["kind": "file", "name": url.lastPathComponent, "text": NSNull()])
+                }
+            }
+        } else if let string = pasteboard.string(forType: .string) {
+            payloads.append(["kind": "text", "text": string])
+        }
+
+        guard !payloads.isEmpty else {
+            debugLog("native paste: nothing usable on the pasteboard")
+            return false
+        }
+        debugLog("native paste: \(payloads.map { $0["kind"] as? String ?? "?" }.joined(separator: ","))")
+        guard let data = try? JSONSerialization.data(withJSONObject: payloads),
+              let json = String(data: data, encoding: .utf8)
+        else { return false }
+        evaluate("window.dshNativePaste ? window.dshNativePaste(\(json)) : null")
+        return true
+    }
+
+    /// Automation hook used for headless verification.
+    func evaluateForTesting(_ script: String, completion: @escaping (Any?, Error?) -> Void) {
+        webView.evaluateJavaScript(script) { value, error in completion(value, error) }
+    }
+}
+
+/// Native drag strip.
+///
+/// `-webkit-app-region: drag` is an Electron feature — WKWebView ignores it and
+/// swallows the mouse, so background dragging never reaches the window. A thin
+/// AppKit view over the title strip restores normal window dragging.
+final class DragHandle: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+}
+
+/// Anything that can service a paste for a panel.
+protocol PasteHandling: AnyObject {
+    /// Handle ⌘V from the real pasteboard.
+    /// - Returns: true when the panel consumed the shortcut.
+    func handlePaste() -> Bool
+}
+
+/// Escape closes the window even when the page holds focus, and ⌘V is
+/// intercepted here.
+///
+/// WebKit's paste event does not reliably expose image and file clipboard
+/// payloads to a file:// page, so the panel reads `NSPasteboard` itself and
+/// injects the result into the page. Text, images and file URLs all take the
+/// same path, and the page never needs a clipboard permission.
+final class ChatPanel: NSPanel {
+    weak var pasteTarget: PasteHandling?
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        close()
+    }
+
+    /// Drag from the title strip, before the web view can consume the press.
+    ///
+    /// Overlay views lose the hit-test to a WKWebView, so the strip is handled
+    /// here: a left press in the top band (short of the close button) becomes a
+    /// window drag instead of a page interaction.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown {
+            let point = event.locationInWindow
+            let inStrip = point.y > frame.height - 38 && point.x < frame.width - 56
+            if inStrip {
+                performDrag(with: event)
+                return
+            }
+        }
+        super.sendEvent(event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        debugLog("keyEquivalent \(event.charactersIgnoringModifiers ?? "?") cmd=\(event.modifierFlags.contains(.command))")
+        let isPaste = event.type == .keyDown
+            && event.modifierFlags.contains(.command)
+            && event.charactersIgnoringModifiers?.lowercased() == "v"
+        if isPaste, pasteTarget?.handlePaste() == true {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
+/// Optional stderr tracing, enabled with DSHBRIDGE_DEBUG=1.
+func debugLog(_ message: String) {
+    guard ProcessInfo.processInfo.environment["DSHBRIDGE_DEBUG"] == "1" else { return }
+    FileHandle.standardError.write("dshmenubar: \(message)\n".data(using: .utf8)!)
+}
