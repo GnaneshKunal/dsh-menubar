@@ -1,15 +1,15 @@
 # dsh-menubar
 
 DeepSeek Harness, one keystroke away — a macOS menu bar client that talks to a **running** `dsh web`
-host, so every question you ask becomes a real, tracked session instead of a side process writing
-logs nobody indexes.
+host, so every question you ask becomes a real, tracked session instead of a side process writing logs
+nobody indexes.
 
 Two halves, one idea:
 
 | | |
 |---|---|
-| [`plugin/`](plugin) | A DeepSeek Harness host plugin. Mounts a token-authenticated WebSocket bridge and projects calls onto the host's own Typert Remotes. |
-| [`app/`](app) | A SwiftUI-free AppKit menu bar app. Hotkey → floating chat window → streaming answers, rendered from a local web UI. |
+| [`plugin/`](plugin) | A DeepSeek Harness host plugin, published as [`@gnanesh/dsh-menubar`](https://www.npmjs.com/package/@gnanesh/dsh-menubar). Mounts a token-authenticated WebSocket bridge and projects calls onto the host's own Typert Remotes. |
+| [`app/`](app) | An AppKit menu bar app. A ⌃⌥Q hotkey and a whale in the status bar; the window runs the real dsh interface by default. |
 
 ## What it looks like
 
@@ -28,9 +28,9 @@ bars — here in the menu bar, second from the left:
 ## Why a plugin instead of a subprocess
 
 The Host owns session state. A child process (`dsh --profile headless "…"`) writes a durable log but
-never registers it in `~/.dsh/storages/workspace.json`, so the session is invisible in the GUI
-forever. Calling the Host's own `session.create` / `session.prompt` through the bridge means the
-session is created by the Host: it appears in the sidebar, resumes, forks and replays like any other.
+never registers it in `~/.dsh/storages/workspace.json`, so the session stays invisible in the GUI.
+Calling the Host's own `session.create` / `session.prompt` through the bridge means the Host creates
+the session: it appears in the sidebar, resumes, forks and replays like any other.
 
 ```
 app ──WS──▶ plugin (inside the dsh host) ──Typert Remotes──▶ session.create / prompt / follow
@@ -39,66 +39,78 @@ app ──WS──▶ plugin (inside the dsh host) ──Typert Remotes──▶
 ## Install
 
 ```bash
-# 1. plugin into the web profile (or use plugin_manager install_bundle)
-dsh plugin --profile web add @gnanesh/dsh-menubar    # or: plugin add /path/to/dsh-menubar/plugin
-dsh web                     # restart the host
+# 1. the plugin, into the running profile
+dsh plugin --profile web add @gnanesh/dsh-menubar
+dsh web
 
-# 2. app
+# 2. the app
 cd app && swift build -c release
-.build/release/DSHMenubar   # or keep it alive with a LaunchAgent
 ```
 
-First boot mints `~/.dsh/menubar-token` (0600) and reuses it forever, so the app reconnects with no
+Keep the app alive across logins with a LaunchAgent (`~/Library/LaunchAgents/co.gnanesh.dshmenubar.plist`):
+
+```xml
+<key>ProgramArguments</key>
+<array><string>/path/to/dsh-menubar/app/.build/release/DSHMenubar</string></array>
+<key>RunAtLoad</key><true/>
+```
+
+First boot mints `~/.dsh/menubar-token` (0600) and reuses it, so the app reconnects with no
 copy-paste and survives host restarts.
 
-## What it does
+## Usage
 
-- **⌃⌥Q** summons the window from the whale in the menu bar (the official mark, shipped as a template SVG).
-- The default surface is the **real dsh interface** embedded in the window, so tool cards, approvals and
-  theme tokens come for free; the compact window remains available in Settings → Menu Bar.
-- Sessions land in a **`menubar-sessions`** workspace, named by the Host's generated titles.
-- **New session per open**; pick an existing one to continue it — switching loads that session's
-  history into the transcript.
-- **Live streaming**: text and reasoning arrive from the host's `session/follow`, not polling.
-- **Reasoning** renders as a collapsed `Think` block.
-- **Stop** cancels the running turn (`session.cancel`).
-- **Markdown** rendered with vendored `marked` + `DOMPurify`.
-- **Paste anything**: images go to the model as real image parts, text files are inlined, plain text
-  inserts at the caret. Read natively from `NSPasteboard`, because a `file://` page gets an empty
-  `clipboardData` for files.
-- Window is draggable, stays put on outside clicks, closes on ✕ or Escape.
+- **⌃⌥Q** toggles the window; the whale in the menu bar does the same. Right-click the whale for
+  status and quit.
+- The default surface is the **real dsh interface**, so tool cards, approvals, tabs and themes come
+  from the shell. A **compact window** — our own transcript and composer — is the alternative.
+- Sessions land in a **`menubar-sessions`** workspace, titled by the Host.
+- **New session per open**; pick an existing one to continue it.
+- **Live streaming** through `session/follow`, not polling; **Stop** issues `session.cancel`.
+- **Paste**: text goes into the focused element on either surface; the compact window also accepts
+  images and text files, read from `NSPasteboard` because a `file://` page gets no files through the
+  DOM paste event.
+- The window is borderless, resizable, draggable, and does not close on outside clicks — ✕ or Escape
+  closes it.
 
-## Settings page
+## Configuration
 
-The plugin contributes a configure page to its own row under Plugins (`plugins.row.config`, key
-`@gnanesh/dsh-menubar#menubar`), which is where a bundle's configuration belongs. There you can choose
-the window surface (full dsh interface vs. compact menu bar window), set the workspace new sessions
-join, and see the bridge URL and token file. Preferences live in `~/.dsh/menubar.json` and are read by
-both sides — the page through `GET/POST /menubar/prefs`, the app through the bridge's `menubar.prefs`
-call — so there is one source of truth. A surface change applies the next time the window opens.
+Everything lives on the plugin's own row, which is where a bundle's configuration belongs:
+
+**Plugins → `@gnanesh/dsh-menubar` → the `menubar` row → Configure**
+
+Registered in `plugins.row.config` under the key `@gnanesh/dsh-menubar#menubar` (`<package name>#<row
+id>`). The page carries:
+
+- **Window** — *Full dsh interface* (default) or *Menu bar window*. Applies the next time the window
+  opens; ⌃⌥Q reopens it.
+- **Workspace** for new sessions.
+- **Menu bar app** — state (Running with pid, or Stopped) plus **Start**, **Restart**, **Quit**.
+  Quit runs `launchctl bootout`, so the app stays down; Start bootstraps the LaunchAgent first, which
+  is why quitting is recoverable without a terminal.
+- **Bridge** — the WebSocket URL and the token file path.
+
+Preferences live in `~/.dsh/menubar.json`, written by the page and read by the app, so there is one
+source of truth over two surfaces:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET/POST /menubar/prefs` | read and write `{ui, workspacePath}` |
+| `GET /menubar/app` | `{running, pid, loaded}` from `launchctl print` |
+| `POST /menubar/app` | `{"action": "start" \| "stop" \| "restart"}` |
+| `GET /menubar/bridge-config` | discovery: `wsUrl`, pre-authenticated `appUrl`, workspace, token file, methods |
 
 Two rules a client half must follow here, both learned the hard way:
 
-1. **Declare the slot before registering into it** — `ctx.slots.inject("settings.section", () => ctx.slots.register(...))`.
-   Registering directly is rejected with *"slot is not declared (a parent entry's children table must declare it)"*.
+1. **Declare the slot before registering into it** — `ctx.slots.inject("plugins.row.config", () =>
+   ctx.slots.register(...))`. Registering directly is rejected with *"slot is not declared (a parent
+   entry's children table must declare it)"*.
 2. **A failing entry blocks the whole boot** (*"Failed to load plugins"*), and an inject edge naming a
-   non-entry — such as the shell-internal `dsh-client-ui-slots` library — leaves the entry in `loading`
-   forever. So: depend only on real boot entries, and wrap the factory and `apply` in try/catch. The worst
-   case is then a missing settings page, never a dead GUI.
-
-## Settings
-
-The plugin registers a **Menu Bar** page in DSH Settings (`settings.section`): choose the window
-surface (compact menu bar window vs. the full dsh interface), set the workspace new sessions join,
-and see the bridge URL and token file.
-
-Preferences live in `~/.dsh/menubar.json` and are read by both sides — the page through
-`GET/POST /menubar/prefs`, the app through the bridge's `menubar.prefs` call — so there is one source
-of truth. The surface change applies on the next window open.
-
-> Installing or updating the plugin's client half needs one host restart before the page appears:
-> `dsh-client-modules` composes the boot graph at startup, so `/plugins/dsh-menubar/client.js` 404s
-> until then.
+   non-entry — such as the shell-internal `dsh-client-ui-slots` library — leaves the entry in
+   `loading` forever. Depend only on real boot entries, and wrap the factory and `apply` in
+   try/catch: the worst case is then a missing page, never a dead GUI. The factory `id` must also
+   equal the package name, or a stale page that still holds the previous bundle registers it twice
+   (*"duplicate factory registration"*).
 
 ## Bridge protocol
 
@@ -109,35 +121,45 @@ host → client:  {t:"hello.ok", …}          {t:"rpc.result", id, ok, value|er
 ```
 
 Methods: `session.create`, `session.prompt`, `session.cancel`, `session.history`, `session.list`,
-`session.models`, `session.selectModel`, `session.follow`, `workspace.list`, `workspace.create`.
+`session.models`, `session.selectModel`, `session.follow`, `workspace.list`, `workspace.create`,
+`menubar.prefs`.
 
 `session.follow` starts a long-lived stream; the Host acknowledges immediately and then pushes
-`assistant-stream` frames (token and reasoning deltas) plus durable `event` entries until `turn/end`.
+`assistant-stream` frames (text and reasoning deltas) plus durable `event` entries until `turn/end`.
 
 ## Releasing and being listed
 
 Pushing a `v*` tag is the release (`.github/workflows/release.yml`): the tag is checked against
-`plugin/package.json`, every entry is syntax-checked, the GitHub release is written from
-`CHANGELOG.md`, and npm publishing runs once the repository variable `NPM_PUBLISH=true` is set with a
-trusted publisher configured on npmjs.
+`plugin/package.json`, every entry is syntax-checked, the package is published to npm over OIDC
+trusted publishing with provenance, and the GitHub release is written from `CHANGELOG.md`. No token
+and no OTP: the only setup is the trusted publisher (repo `GnaneshKunal/dsh-menubar`, workflow
+`release.yml`, environment `release`) plus the repository variable `NPM_PUBLISH=true`.
 
 [`scripts/submit-awesome.sh`](scripts/submit-awesome.sh) submits the plugin to
 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) — fork, one
 `data/plugins/<owner>__<repo>.yml`, PR. That list requires the repository to be at least one day old
 and enforces it in CI, so the submission is armed as a **dsh schedule** (a durable reminder that
-reopens this session when it is due, visible under Automation tasks) rather than a system job; the
-script is idempotent and stops if the entry or the PR already exists.
+reopens the session when due, visible under Automation tasks); the script is idempotent and stops if
+the entry or the PR already exists.
 
-## Controls
+## Debug hooks
 
-`Plugins → @gnanesh/dsh-menubar → Configure` shows whether the app is running and lets you **Start**, **Restart** or **Quit**
-it, backed by `GET`/`POST /menubar/app` on the plugin. Quitting from that page unloads the LaunchAgent,
-so the app stays down; Start loads it again, which is why a quit is recoverable without a terminal.
+The app reads these from the environment, which is how the screenshots in `assets/` are reproducible
+instead of hand-cropped:
+
+| Variable | Effect |
+|---|---|
+| `DSHBRIDGE_DEBUG=1` | stderr tracing (connections, paste, layout, snapshots) |
+| `DSHBRIDGE_WINDOW_SIZE=1180x760` | initial window size |
+| `DSHBRIDGE_SNAPSHOT=/path.png` | write the webview exactly as rendered |
+| `DSHBRIDGE_SNAPSHOT_DELAY=14` | wait before that snapshot |
+| `DSHBRIDGE_EVAL='js'` | run one snippet after load (e.g. collapse the sidebar) |
+| `DSH_MENUBAR_UI=native\|embedded` | override the stored surface for one run |
 
 ## Limits
 
-- Binary file contents can't be attached: the Host accepts files only through upload receipts, and
-  the bridge has no upload route yet.
+- Binary file contents can't be attached on the embedded surface: the shell owns its own paste
+  pipeline, and the bridge has no upload route yet.
 - The model selector doesn't reflect a picked session's current model.
 - Requires a loopback `dsh web`; the bridge is authenticated but not transport-encrypted, so don't
   expose the port through a tunnel without TLS.
