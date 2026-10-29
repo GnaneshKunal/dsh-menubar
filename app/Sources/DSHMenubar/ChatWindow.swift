@@ -160,12 +160,14 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         if embedded {
             // The GUI mounts its React tree after the document finishes loading,
             // so chrome-hiding has to be retried until the shell is up.
+            // Chrome-hiding is disabled: guessing at the shell's internals
+            // collapsed the layout. Report the real viewport instead.
             concealTask?.cancel()
             concealTask = Task { [weak self] in
-                for attempt in 0..<24 {
+                for attempt in 0..<3 {
                     if Task.isCancelled { return }
-                    try? await Task.sleep(nanoseconds: 700_000_000)
-                    await MainActor.run { self?.concealChrome(attempt: attempt) }
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    await MainActor.run { self?.reportViewport(tag: "boot #\(attempt)") }
                 }
             }
             return
@@ -175,6 +177,36 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             pendingBootstrap = nil
         }
         debugLog("web ui loaded")
+    }
+
+    /// Log the page's viewport against the window, so a layout mismatch is
+    /// visible in the log instead of guessed at.
+    private func reportViewport(tag: String) {
+        let script = #"""
+        JSON.stringify({
+          innerW: window.innerWidth, innerH: window.innerHeight,
+          kids: [...document.body.children].map((el) => {
+            const r = el.getBoundingClientRect();
+            return (el.tagName + '.' + String(el.className || '')).slice(0, 40)
+              + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)
+              + '@' + Math.round(r.left) + ',' + Math.round(r.top);
+          }),
+          sidebarVisible: [...document.querySelectorAll('aside, [class*="sidebar"], [class*="Sidebar"]')]
+            .some((el) => el.getBoundingClientRect().width > 100),
+        })
+        """#
+        webView.evaluateJavaScript(script) { value, error in
+            if let error {
+                debugLog("\(tag) viewport error: \(error.localizedDescription)")
+            } else {
+                debugLog("\(tag) window=\(self.panel.frame.size) viewport=\(value ?? "?")")
+            }
+        }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        debugLog("window resized to \(panel.frame.size)")
+        reportViewport(tag: "resize")
     }
 
     /// Hide the GUI's own navigation so the window shows the conversation only.
