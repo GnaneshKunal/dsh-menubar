@@ -123,9 +123,9 @@ trusted publisher configured on npmjs.
 [`scripts/submit-awesome.sh`](scripts/submit-awesome.sh) submits the plugin to
 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) — fork, one
 `data/plugins/<owner>__<repo>.yml`, PR. That list requires the repository to be at least one day old
-and enforces it in CI, so the submission is armed with a launchd calendar job
-(`co.gnanesh.dshmenubar-awesome`) rather than run by hand; the script is idempotent and stops if the
-entry or the PR already exists.
+and enforces it in CI, so the submission is armed as a **dsh schedule** (a durable reminder that
+reopens this session when it is due, visible under Automation tasks) rather than a system job; the
+script is idempotent and stops if the entry or the PR already exists.
 
 ## Limits
 
