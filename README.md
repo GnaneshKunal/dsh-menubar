@@ -54,14 +54,22 @@ copy-paste and survives host restarts.
   `clipboardData` for files.
 - Window is draggable, stays put on outside clicks, closes on ✕ or Escape.
 
-## Settings page (parked)
+## Settings page
 
-The Menu Bar settings page is **not loaded by default**. Its client bundle lives in
-[`plugin/extras/settings-page/client.js`](plugin/extras/settings-page/client.js) and is not declared in
-`package.json`, because a client entry that fails to activate **blocks the whole web boot** — the host
-then only shows "Failed to load plugins". Preferences are still respected through
-`~/.dsh/menubar.json` and `GET/POST /menubar/prefs`; only the GUI page is parked until it can be tested
-in an isolated host.
+The plugin contributes a **Menu Bar** section to DSH Settings (`settings.section`, order 25): choose
+the window surface (full dsh interface vs. compact menu bar window), set the workspace new sessions
+join, and see the bridge URL and token file. Preferences live in `~/.dsh/menubar.json` and are read by
+both sides — the page through `GET/POST /menubar/prefs`, the app through the bridge's `menubar.prefs`
+call — so there is one source of truth. A surface change applies the next time the window opens.
+
+Two rules a client half must follow here, both learned the hard way:
+
+1. **Declare the slot before registering into it** — `ctx.slots.inject("settings.section", () => ctx.slots.register(...))`.
+   Registering directly is rejected with *"slot is not declared (a parent entry's children table must declare it)"*.
+2. **A failing entry blocks the whole boot** (*"Failed to load plugins"*), and an inject edge naming a
+   non-entry — such as the shell-internal `dsh-client-ui-slots` library — leaves the entry in `loading`
+   forever. So: depend only on real boot entries, and wrap the factory and `apply` in try/catch. The worst
+   case is then a missing settings page, never a dead GUI.
 
 ## Settings
 
