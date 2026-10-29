@@ -103,14 +103,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let token = try client.sharedToken()
                 let url = client.connectedURL ?? ""
                 let workspace = client.workspacePath
+                // Read the stored surface preference before touching the UI.
+                let prefs = (try? await self.client.prefs()) ?? [:]
+                let embedded = (prefs["ui"] as? String) == "embedded"
+                let appUrl = client.discoveryPayload["appUrl"] as? String
+
                 await MainActor.run {
                     self.connected = true
                     self.connecting = false
                     self.updateStatus("connected · \(workspace)")
                     // Hand the page its credentials once; it owns the socket
                     // from here so every RPC is plain JS.
-                    let appUrl = self.client.discoveryPayload["appUrl"] as? String
-                    self.quickAsk.configure(wsURL: url, token: token, workspacePath: workspace, appUrl: appUrl)
+                    self.quickAsk.configure(wsURL: url, token: token, workspacePath: workspace,
+                                            appUrl: appUrl, embedded: embedded)
                 }
             } catch {
                 await MainActor.run {

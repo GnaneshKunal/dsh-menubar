@@ -42,6 +42,7 @@ export const SUPPORTED_METHODS = Object.freeze([
   'session.models',
   'session.selectModel',
   'session.follow',
+  'menubar.prefs',
 ])
 
 /**

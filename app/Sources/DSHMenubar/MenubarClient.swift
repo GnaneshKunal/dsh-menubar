@@ -288,6 +288,12 @@ final class MenubarClient {
     /// on every popover open.
     private var sessionCache: (at: Date, rows: [SessionChoice])?
 
+    /// Preferences the host plugin persists (which window surface to use, etc.).
+    func prefs() async throws -> [String: Any] {
+        let value = try await rpc("menubar.prefs", [:], timeout: 15)
+        return (value as? [String: Any]) ?? [:]
+    }
+
     /// Sessions that belong to the bridge's own workspace, newest first.
     ///
     /// `session.list` returns every session on the host, so the picker filters

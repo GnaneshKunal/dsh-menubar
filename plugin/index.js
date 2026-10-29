@@ -16,6 +16,7 @@
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { BRIDGE_CONFIG_PATH, BRIDGE_PATH, HELLO_TIMEOUT_MS, PING_INTERVAL_MS, SUPPORTED_METHODS } from './src/protocol.js'
 import { resolveToken, tokenFilePath } from './src/token.js'
+import { readPrefs, writePrefs } from './src/prefs.js'
 import { createHostApi } from './src/hostapi.js'
 import { SwiftBridgeServer } from './src/server.js'
 
@@ -40,9 +41,11 @@ export const inject = ['webServer', 'typertGateway', 'connection']
 export async function apply(ctx, config = {}) {
   const logger = ctx.logger ?? console
 
+  const prefs = await readPrefs()
+  // Explicit config wins, then the stored preference, then the default path.
   const workspacePath = typeof config.workspacePath === 'string' && config.workspacePath.length > 0
     ? config.workspacePath
-    : dshHomePath('menubar-sessions')
+    : prefs.workspacePath
   const path = typeof config.path === 'string' && config.path.startsWith('/')
     ? config.path
     : BRIDGE_PATH
@@ -66,7 +69,16 @@ export async function apply(ctx, config = {}) {
     logger.info(`menubar bridge: minted bridge token at ${resolved.file} (0600); the native client reads this file`)
   }
 
-  const hostApi = createHostApi({ gateway, connection, workspacePath, logger })
+  const hostApi = createHostApi({
+    gateway,
+    connection,
+    workspacePath,
+    logger,
+    prefs: async () => {
+      const current = await readPrefs()
+      return { ...current, tokenFile, workspacePathResolved: workspacePath }
+    },
+  })
   const server = new SwiftBridgeServer({
     token: resolved.token,
     hostApi,
@@ -124,6 +136,52 @@ export async function apply(ctx, config = {}) {
       },
     }),
     'menubar: discovery route',
+  )
+
+  // Preferences: read by the native app over the bridge and edited by the
+  // Settings page the client half registers.
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/menubar/prefs',
+      handler: async (req, res) => {
+        const send = (body) => {
+          res.statusCode = 200
+          res.setHeader('content-type', 'application/json; charset=utf-8')
+          res.setHeader('cache-control', 'no-store')
+          res.end(JSON.stringify(body))
+        }
+        try {
+          if (req.method === 'GET') {
+            const current = await readPrefs()
+            send({
+              ...current,
+              tokenFile,
+              wsUrl: `ws://127.0.0.1:${String(ctx.webServer.port)}${path}`,
+              workspacePathResolved: workspacePath,
+            })
+            return
+          }
+          if (req.method === 'POST') {
+            const chunks = []
+            for await (const chunk of req) chunks.push(chunk)
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
+            const next = await writePrefs(body)
+            logger.info(`menubar bridge: prefs saved (ui=${next.ui})`)
+            send({ ...next, tokenFile })
+            return
+          }
+          res.statusCode = 405
+          res.end()
+        } catch (error) {
+          logger.warn(`menubar bridge: prefs request failed (${String(error)})`)
+          res.statusCode = 400
+          res.setHeader('content-type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: String(error) }))
+        }
+      },
+    }),
+    'menubar: prefs route',
   )
 
   // Carrier teardown.

@@ -52,6 +52,20 @@ copy-paste and survives host restarts.
   `clipboardData` for files.
 - Window is draggable, stays put on outside clicks, closes on ✕ or Escape.
 
+## Settings
+
+The plugin registers a **Menu Bar** page in DSH Settings (`settings.section`): choose the window
+surface (compact menu bar window vs. the full dsh interface), set the workspace new sessions join,
+and see the bridge URL and token file.
+
+Preferences live in `~/.dsh/menubar.json` and are read by both sides — the page through
+`GET/POST /menubar/prefs`, the app through the bridge's `menubar.prefs` call — so there is one source
+of truth. The surface change applies on the next window open.
+
+> Installing or updating the plugin's client half needs one host restart before the page appears:
+> `dsh-client-modules` composes the boot graph at startup, so `/plugins/dsh-menubar/client.js` 404s
+> until then.
+
 ## Bridge protocol
 
 ```

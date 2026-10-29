@@ -28,7 +28,7 @@ const EMPTY_WIRE_UPLINK = {
  * @param {{ info: Function, warn: Function }} options.logger plugin logger.
  * @returns {{ call: Function, ensureWorkspace: Function }} the adapter.
  */
-export function createHostApi({ gateway, connection, workspacePath, logger }) {
+export function createHostApi({ gateway, connection, workspacePath, logger, prefs }) {
   // One owner Peer speaks for every call and stream this bridge opens: the
   // bridge authenticates its own client with a bearer token, then acts as the
   // local operator who owns this Host.
@@ -242,6 +242,11 @@ export function createHostApi({ gateway, connection, workspacePath, logger }) {
       case 'session.cancel':
         if (!isRecord(payload)) throw badRequest('session.cancel payload must be an object')
         return invoke({ namespace: 'session', method: 'cancel', args: { request: payload }, signal })
+
+      // `menubar.prefs` is answered by the plugin itself, not the host.
+      case 'menubar.prefs':
+        if (typeof prefs === 'function') return prefs()
+        throw notFound(method)
 
       case 'session.history':
         return sessionHistory(payload, signal)

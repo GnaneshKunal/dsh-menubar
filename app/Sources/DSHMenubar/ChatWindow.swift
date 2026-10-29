@@ -18,7 +18,8 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
     /// `native` renders Resources/ui.html; `embedded` boots the host's own GUI
     /// inside the window so its real components (chat, tool cards, approvals,
     /// themes) are used instead of ours.
-    private let embedded = ProcessInfo.processInfo.environment["DSH_MENUBAR_UI"] == "embedded"
+    /// Surface choice: env wins for testing, otherwise the stored preference.
+    private var embedded = ProcessInfo.processInfo.environment["DSH_MENUBAR_UI"] == "embedded"
     private var appURL: URL?
     private var pasteMonitor: Any?
     private var concealTask: Task<Void, Never>?
@@ -165,7 +166,11 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
     }
 
     /// Hand the page its token and bridge URL, then let it connect.
-    func configure(wsURL: String, token: String, workspacePath: String, appUrl: String?) {
+    func configure(wsURL: String, token: String, workspacePath: String, appUrl: String?, embedded requested: Bool?) {
+        if let requested, ProcessInfo.processInfo.environment["DSH_MENUBAR_UI"] == nil {
+            embedded = requested
+            panel.dragBandHeight = embedded ? 12 : 38
+        }
         if embedded, let appUrl, let url = URL(string: appUrl) {
             appURL = url
             webView.load(URLRequest(url: url))
