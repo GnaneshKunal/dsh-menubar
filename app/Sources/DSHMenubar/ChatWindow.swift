@@ -37,6 +37,9 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         let frame = NSRect(x: 0, y: 0, width: 640, height: 580)
         panel = ChatPanel(contentRect: frame, styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
         panel.minSize = NSSize(width: 460, height: 420)
+        // Closing the panel must not deallocate it: the app is a long-lived
+        // status item that reuses one window.
+        panel.isReleasedWhenClosed = false
         // DSHBRIDGE_WINDOW_SIZE=1180x760 gives screenshots and tests a known
         // frame instead of the default compact one.
         if let spec = ProcessInfo.processInfo.environment["DSHBRIDGE_WINDOW_SIZE"] {

@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.1
+
+The menu bar item disappearing turned out to be the app exiting, not the host.
+
+- The window no longer releases itself on close (`isReleasedWhenClosed = false`): the panel used to be
+  deallocated the first time you dismissed it, which left a status item with nothing to show.
+- Closing the window no longer ends the process (`applicationShouldTerminateAfterLastWindowClosed` →
+  `false`). The status item is the app; dismissing a window should never be a way to quit it.
+- The two `applicationWillTerminate` hooks are merged into one that both closes the socket and logs,
+  so a restart of the host cannot leave a half-shut down process behind.
+- README shows the whale in the menu bar rather than cropped out of it.
+
 ## v0.1.0
 
 First release: DeepSeek Harness in the macOS menu bar.

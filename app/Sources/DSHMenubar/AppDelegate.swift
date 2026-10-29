@@ -21,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Lifecycle
 
+    /// Closing the window hides it; the status item lives on.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMainMenu()
         quickAsk = QuickAskController()
@@ -31,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        debugLog("terminating: socket closed, status item removed")
         client.disconnect()
     }
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-menubar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "DeepSeek Harness in your macOS menu bar: a token-authenticated bridge plus a native quick-ask window.",
   "license": "MIT",
