@@ -17,6 +17,7 @@ import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { BRIDGE_CONFIG_PATH, BRIDGE_PATH, HELLO_TIMEOUT_MS, PING_INTERVAL_MS, SUPPORTED_METHODS } from './src/protocol.js'
 import { resolveToken, tokenFilePath } from './src/token.js'
 import { readPrefs, writePrefs } from './src/prefs.js'
+import { appAct, appStatus } from './src/appcontrol.js'
 import { createHostApi } from './src/hostapi.js'
 import { SwiftBridgeServer } from './src/server.js'
 
@@ -182,6 +183,43 @@ export async function apply(ctx, config = {}) {
       },
     }),
     'menubar: prefs route',
+  )
+
+  // The menu bar app's lifecycle, so quitting it is recoverable from Settings
+  // instead of from a terminal.
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: 'exact',
+      path: '/menubar/app',
+      handler: async (req, res) => {
+        const send = (status, body) => {
+          res.statusCode = status
+          res.setHeader('content-type', 'application/json; charset=utf-8')
+          res.setHeader('cache-control', 'no-store')
+          res.end(JSON.stringify(body))
+        }
+        try {
+          if (req.method === 'GET') {
+            send(200, await appStatus())
+            return
+          }
+          if (req.method === 'POST') {
+            const chunks = []
+            for await (const chunk of req) chunks.push(chunk)
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
+            const state = await appAct(String(body.action))
+            logger.info(`menubar bridge: app ${body.action} → running=${state.running}`)
+            send(200, state)
+            return
+          }
+          send(405, { error: 'method not allowed' })
+        } catch (error) {
+          logger.warn(`menubar bridge: app control failed (${String(error)})`)
+          send(500, { error: String(error?.message ?? error) })
+        }
+      },
+    }),
+    'menubar: app control route',
   )
 
   // Carrier teardown.

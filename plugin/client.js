@@ -107,9 +107,32 @@
           var [prefs, setPrefs] = React.useState(null);
           var [workspace, setWorkspace] = React.useState("");
           var [state, setState] = React.useState("loading");
+          var [app, setApp] = React.useState(null);
+          var [appBusy, setAppBusy] = React.useState(false);
           var [error, setError] = React.useState("");
 
+          function refreshApp() {
+            fetch("/menubar/app", { headers: { accept: "application/json" } })
+              .then(function (r) { return r.json(); })
+              .then(setApp)
+              .catch(function () { setApp(null); });
+          }
+
+          function controlApp(action) {
+            setAppBusy(true);
+            fetch("/menubar/app", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ action: action }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(setApp)
+              .catch(function (e) { setError(String(e)); })
+              .then(function () { setAppBusy(false); });
+          }
+
           React.useEffect(function () {
+            refreshApp();
             readPrefs().then(function (value) {
               setPrefs(value);
               setWorkspace(value.workspacePathResolved || value.workspacePath || "");
@@ -173,6 +196,35 @@
                 React.createElement("button", { style: S.button, onClick: commitWorkspace }, "Save")),
               React.createElement("div", { style: S.hint },
                 "Sessions created from the menu bar are grouped under this folder.")),
+
+            React.createElement("div", { style: S.group },
+              React.createElement("div", { style: S.label }, "Menu bar app"),
+              React.createElement("div", { style: S.row },
+                React.createElement("div", {
+                  style: Object.assign({}, S.status, {
+                    color: prefs && app ? undefined : undefined,
+                    flex: "1",
+                  }),
+                }, !app ? "Checking…" : (app.running
+                  ? "Running" + (app.pid ? " (pid " + app.pid + ")" : "")
+                  : "Stopped")),
+                React.createElement("button", {
+                  style: S.button,
+                  disabled: appBusy || !app,
+                  onClick: function () { controlApp("start"); },
+                }, "Start"),
+                React.createElement("button", {
+                  style: Object.assign({}, S.button, { background: "var(--dsw-alias-bg-layer-2)", color: "var(--dsw-alias-label-primary)", border: "1px solid var(--dsw-alias-border-l1)" }),
+                  disabled: appBusy || !app,
+                  onClick: function () { controlApp("restart"); },
+                }, "Restart"),
+                React.createElement("button", {
+                  style: Object.assign({}, S.button, { background: "transparent", color: "var(--dsw-alias-label-secondary)", border: "1px solid var(--dsw-alias-border-l1)" }),
+                  disabled: appBusy || !app || !app.running,
+                  onClick: function () { controlApp("stop"); },
+                }, "Quit")),
+              React.createElement("div", { style: S.hint },
+                "Quitting the app from its menu removes the whale from the menu bar; start it again here.")),
 
             React.createElement("div", { style: S.group },
               React.createElement("div", { style: S.label }, "Bridge"),
