@@ -8,7 +8,7 @@ import WebKit
 /// files, drag-and-drop, and rich rendering are things the web platform already
 /// does well; re-implementing them in AppKit would be a permanent tax for a
 /// worse result.
-final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageHandler, PasteHandling, NSWindowDelegate, NSSearchFieldDelegate {
+final class QuickAskController: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, PasteHandling, NSWindowDelegate, NSSearchFieldDelegate {
 
     private let panel: ChatPanel
     private let webView: WKWebView
@@ -222,6 +222,7 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         panel.delegate = self
         if embedded { config.userContentController.addUserScript(errorHook) }
         webView.navigationDelegate = self
+        webView.uiDelegate = self
         closeOverlay.isHidden = !embedded
         if !embedded { loadPage() }
     }
@@ -281,6 +282,76 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             pendingBootstrap = nil
         }
         debugLog("web ui loaded")
+    }
+
+    // MARK: - Links
+
+    /// Hand a URL to the system: the default browser for web pages, the
+    /// registered handler for `mailto:`, `tel:` and app deep links.
+    ///
+    /// `NSWorkspace.open` is the only thing that respects the user's browser
+    /// choice; asking WebKit to load the page would replace the dsh interface
+    /// in this window instead.
+    private func openInSystemBrowser(_ url: URL) {
+        if NSWorkspace.shared.open(url) {
+            debugLog("opened in system browser: \(url.absoluteString)")
+        } else {
+            debugLog("system open failed: \(url.absoluteString)")
+        }
+    }
+
+    /// `scheme://host:port` of an http(s) URL, nil for anything else.
+    private static func webOrigin(_ url: URL) -> String? {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = url.host?.lowercased()
+        else { return nil }
+        let port = url.port ?? (scheme == "https" ? 443 : 80)
+        return "\(scheme)://\(host):\(port)"
+    }
+
+    /// True when the URL is a different site than the interface this window
+    /// embeds. Local files, `about:` and `data:` addresses stay: they are part
+    /// of the page, not a destination.
+    private func leavesApp(_ url: URL) -> Bool {
+        guard let target = Self.webOrigin(url) else { return false }
+        guard let appURL, let app = Self.webOrigin(appURL) else { return true }
+        return target != app
+    }
+
+    /// A clicked link must not navigate the panel away from the interface.
+    ///
+    /// Everything the page does to itself — the embedded GUI's own routes, its
+    /// boot request, reloads, form posts, subframes — is allowed; an address
+    /// that leaves this site, a new window, and any non-web scheme are handed
+    /// to the system.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        let scheme = (url.scheme ?? "").lowercased()
+        let pageScheme = ["http", "https", "file", "about", "data", "blob"].contains(scheme)
+        let newWindow = navigationAction.targetFrame == nil
+        let leaving = navigationAction.navigationType == .linkActivated && leavesApp(url)
+        if !pageScheme || newWindow || leaving {
+            openInSystemBrowser(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    /// `target="_blank"` and `window.open` need a window WebKit cannot give
+    /// here. Without this method and a `uiDelegate`, WebKit drops them
+    /// silently — which is why a link click did nothing at all.
+    func webView(_ webView: WKWebView,
+                 createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction,
+                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url { openInSystemBrowser(url) }
+        return nil
     }
 
     /// Log the page's viewport against the window, so a layout mismatch is

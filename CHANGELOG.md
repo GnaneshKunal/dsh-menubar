@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.8
+
+- **Links open in the browser you configured.** A link click in the window did nothing at all.
+  The dsh interface hands an external address to `window.open(url, "_blank", …)`, and a
+  WKWebView with no `uiDelegate` drops that request silently: no tab, no error, no page. The
+  window now answers new-window requests and link activations by handing the URL to
+  `NSWorkspace`, so the page opens in the system default browser and `mailto:` / `tel:` reach
+  their registered handlers. Addresses that belong to the dsh interface still navigate the
+  window itself, so in-app routes and the boot request are untouched.
+
 ## v0.1.7
 
 Configuration now renders **on the plugin's page**, not behind a Configure step.
