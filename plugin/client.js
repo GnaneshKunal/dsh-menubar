@@ -19,7 +19,10 @@
   if (!root || !root.__ModuleLoader__ || typeof root.__ModuleLoader__.load !== "function") return;
 
   root.__ModuleLoader__.load({
-    id: "dsh-menubar",
+    // Must equal the package name: the loader keys factories by this id, and a
+    // stale page can hold the previous bundle, so a stale id collides as
+    // "duplicate factory registration".
+    id: "@gnanesh/dsh-menubar",
     factory: function (require) {
       var module = { exports: {} };
       var exports = module.exports;

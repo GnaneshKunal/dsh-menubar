@@ -1,6 +1,6 @@
 {
   "name": "@gnanesh/dsh-menubar",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "DeepSeek Harness in your macOS menu bar: a host plugin that bridges a running dsh web host over an authenticated WebSocket, so asks made from a menu bar client become real tracked sessions.",
   "license": "MIT",
   "type": "module",

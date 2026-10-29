@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.3
+
+Fixes the boot failure the scoped rename introduced.
+
+The client bundle registered its lazy factory under the hardcoded id
+`dsh-menubar`, while its entry id became `@gnanesh/dsh-menubar`. Any page that
+still held the previous bundle therefore registered the same factory id twice
+and the shell aborted with `duplicate factory registration for "dsh-menubar"`
+→ `web boot: 1 entry did not activate`. The factory id now equals the package
+name, which is the invariant the loader expects.
+
 ## v0.1.2
 
 First release on npm, as `@gnanesh/dsh-menubar`.
