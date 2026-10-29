@@ -15,7 +15,13 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
     private var loaded = false
     private var pendingBootstrap: String?
 
+    /// `native` renders Resources/ui.html; `embedded` boots the host's own GUI
+    /// inside the window so its real components (chat, tool cards, approvals,
+    /// themes) are used instead of ours.
+    private let embedded = ProcessInfo.processInfo.environment["DSH_MENUBAR_UI"] == "embedded"
+    private var appURL: URL?
     private var pasteMonitor: Any?
+    private var concealTask: Task<Void, Never>?
     private var lastCloseAt = Date.distantPast
     var closedRecently: Bool { Date().timeIntervalSince(lastCloseAt) < 0.25 }
     var isShown: Bool { panel.isVisible }
@@ -27,7 +33,8 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
         let frame = NSRect(x: 0, y: 0, width: 640, height: 580)
-        panel = ChatPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        panel = ChatPanel(contentRect: frame, styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
+        panel.minSize = NSSize(width: 460, height: 420)
         webView = WKWebView(frame: frame, configuration: config)
 
         super.init()
@@ -43,7 +50,7 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             let isPaste = event.modifierFlags.contains(.command)
                 && event.charactersIgnoringModifiers?.lowercased() == "v"
             debugLog("monitor key: \(event.charactersIgnoringModifiers ?? "?") cmd=\(event.modifierFlags.contains(.command))")
-            guard isPaste else { return event }
+            guard isPaste, !self.embedded else { return event }
             return self.handlePaste() ? nil : event
         }
 
@@ -76,12 +83,13 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
             drag.topAnchor.constraint(equalTo: container.topAnchor),
             drag.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             drag.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -56),
-            drag.heightAnchor.constraint(equalToConstant: 38),
+            drag.heightAnchor.constraint(equalToConstant: embedded ? 12 : 38),
         ])
 
+        panel.dragBandHeight = embedded ? 12 : 38
         panel.delegate = self
         webView.navigationDelegate = self
-        loadPage()
+        if !embedded { loadPage() }
     }
 
     deinit {
@@ -104,11 +112,50 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
+        if embedded {
+            // The GUI mounts its React tree after the document finishes loading,
+            // so chrome-hiding has to be retried until the shell is up.
+            concealTask?.cancel()
+            concealTask = Task { [weak self] in
+                for attempt in 0..<24 {
+                    if Task.isCancelled { return }
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    await MainActor.run { self?.concealChrome(attempt: attempt) }
+                }
+            }
+            return
+        }
         if let pending = pendingBootstrap {
             evaluate(pending)
             pendingBootstrap = nil
         }
         debugLog("web ui loaded")
+    }
+
+    /// Hide the GUI's own navigation so the window shows the conversation only.
+    /// Retried because the tree is mounted asynchronously.
+    private func concealChrome(attempt: Int) {
+        let script = #"""
+        (() => {
+          const report = { hid: 0, composer: false, text: '' };
+          document.querySelectorAll('aside, nav, [class*="sidebar"], [class*="Sidebar"], [class*="SidebarRoot"]').forEach((el) => {
+            const r = el.getBoundingClientRect();
+            if (r.width > 100 && r.height > 200) { el.style.display = 'none'; report.hid += 1; }
+          });
+          report.composer = !!document.querySelector('textarea, [contenteditable="true"]');
+          report.text = document.body.innerText.replace(/\s+/g, ' ').slice(0, 100);
+          if (\#(attempt) % 6 === 0 || report.composer) {
+            window.webkit.messageHandlers.dsh.postMessage({
+              type: 'log',
+              message: 'conceal #\#(attempt) hid=' + report.hid + ' composer=' + report.composer + ' text=' + report.text,
+            });
+          }
+          return report;
+        })();
+        """#
+        webView.evaluateJavaScript(script) { _, error in
+            if let error { debugLog("conceal js error: \(error.localizedDescription)") }
+        }
     }
 
     private func evaluate(_ script: String) {
@@ -118,7 +165,13 @@ final class QuickAskController: NSObject, WKNavigationDelegate, WKScriptMessageH
     }
 
     /// Hand the page its token and bridge URL, then let it connect.
-    func configure(wsURL: String, token: String, workspacePath: String) {
+    func configure(wsURL: String, token: String, workspacePath: String, appUrl: String?) {
+        if embedded, let appUrl, let url = URL(string: appUrl) {
+            appURL = url
+            webView.load(URLRequest(url: url))
+            debugLog("embedded ui: loading \(url.absoluteString.split(separator: "?").first ?? "?")")
+            return
+        }
         let config: [String: Any] = ["wsUrl": wsURL, "token": token, "workspacePath": workspacePath]
         guard let data = try? JSONSerialization.data(withJSONObject: config),
               let json = String(data: data, encoding: .utf8)
@@ -290,10 +343,14 @@ final class ChatPanel: NSPanel {
     /// Overlay views lose the hit-test to a WKWebView, so the strip is handled
     /// here: a left press in the top band (short of the close button) becomes a
     /// window drag instead of a page interaction.
+    /// Height of the draggable title band. The embedded GUI draws its own
+    /// header, so it gets a thin strip; our own page can spare the full row.
+    var dragBandHeight: CGFloat = 38
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown {
             let point = event.locationInWindow
-            let inStrip = point.y > frame.height - 38 && point.x < frame.width - 56
+            let inStrip = point.y > frame.height - dragBandHeight && point.x < frame.width - 56
             if inStrip {
                 performDrag(with: event)
                 return

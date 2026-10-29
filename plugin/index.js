@@ -98,8 +98,21 @@ export async function apply(ctx, config = {}) {
           ? req.headers.host
           : `127.0.0.1:${String(port)}`
         const wsUrl = `ws://${hostHeader}${path}`
+        // The GUI's own page needs a signed browser cookie; the host can mint a
+        // URL carrying this process's launch token, which `GET /` exchanges for
+        // that cookie. Handing it to the app lets a webview boot the real UI.
+        let appUrl
+        try {
+          const base = `http://${hostHeader}/`
+          appUrl = typeof connection.authenticatedUrl === 'function'
+            ? connection.authenticatedUrl(base)
+            : undefined
+        } catch (error) {
+          logger.warn(`menubar bridge: could not build an authenticated app URL (${String(error)})`)
+        }
         const body = JSON.stringify({
           wsUrl,
+          appUrl,
           workspacePath,
           tokenFile,
           methods: SUPPORTED_METHODS,

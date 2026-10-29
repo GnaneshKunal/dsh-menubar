@@ -35,6 +35,8 @@ final class MenubarClient {
     private(set) var hostURL: URL?
     /// Absolute websocket URL of the live socket, for the page to reconnect.
     private(set) var connectedURL: String?
+    /// Full discovery payload, including the host's pre-authenticated app URL.
+    private(set) var discoveryPayload: [String: Any] = [:]
 
     init(tokenPath: String = (NSHomeDirectory() as NSString).appendingPathComponent(".dsh/menubar-token")) {
         self.tokenPath = tokenPath
@@ -106,6 +108,7 @@ final class MenubarClient {
                   let wsURL = URL(string: wsString)
             else { continue }
             if let workspace = object["workspacePath"] as? String { workspacePath = workspace }
+            discoveryPayload = object
             return wsURL
         }
         guard let fallback = URL(string: "ws://127.0.0.1:3080/menubar/bridge") else {

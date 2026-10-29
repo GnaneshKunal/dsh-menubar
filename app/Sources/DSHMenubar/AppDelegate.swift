@@ -109,7 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.updateStatus("connected · \(workspace)")
                     // Hand the page its credentials once; it owns the socket
                     // from here so every RPC is plain JS.
-                    self.quickAsk.configure(wsURL: url, token: token, workspacePath: workspace)
+                    let appUrl = self.client.discoveryPayload["appUrl"] as? String
+                    self.quickAsk.configure(wsURL: url, token: token, workspacePath: workspace, appUrl: appUrl)
                 }
             } catch {
                 await MainActor.run {
