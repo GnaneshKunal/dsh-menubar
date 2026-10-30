@@ -32,9 +32,10 @@ gh repo fork "$UPSTREAM" --clone=false >/dev/null 2>&1 || true
 # 2. Working clone of the fork.
 rm -rf "$WORKDIR"
 mkdir -p "$(dirname "$WORKDIR")"
-git clone --depth 1 "https://github.com/$FORK_OWNER/$(basename "$UPSTREAM").git" "$WORKDIR" >/dev/null 2>&1
+# gh is authenticated over SSH here; an HTTPS clone has no credential to offer.
+git clone --depth 1 "git@github.com:$FORK_OWNER/$(basename "$UPSTREAM").git" "$WORKDIR"
 cd "$WORKDIR"
-git remote add upstream "https://github.com/$UPSTREAM.git"
+git remote add upstream "git@github.com:$UPSTREAM.git"
 git fetch --depth 1 upstream main >/dev/null 2>&1
 git reset --hard upstream/main >/dev/null
 
@@ -50,8 +51,8 @@ url: https://github.com/GnaneshKunal/dsh-menubar
 name: GnaneshKunal/dsh-menubar
 category: ui
 description:
-  en: 'DeepSeek Harness in the macOS menu bar: a ⌃⌥Q window that boots the real dsh interface through a pre-authenticated URL, backed by a host plugin that projects a token-authenticated bridge onto the host session APIs, so asks made from the menu bar become tracked sessions. Includes a compact fallback window, streaming answers, session titles and text paste.'
-  zh: '把 DeepSeek Harness 放进 macOS 菜单栏：⌃⌥Q 唤出的窗口通过一次性预授权链接直接加载真正的 dsh 界面；配套宿主插件把带令牌的桥接投射到宿主的会话接口上，菜单栏里的提问因此成为可追踪的会话。另含精简窗口、流式回答、会话标题与文本粘贴。'
+  en: 'DeepSeek Harness in the macOS menu bar: a ⌃⌥Q window that boots the real dsh interface through a pre-authenticated URL, backed by a host plugin that projects a token-authenticated bridge onto the host session APIs, so asks made from the menu bar become tracked sessions. Includes ⌘F find-on-page, a compact fallback window, streaming answers, session titles, text paste, and a bundle config page that starts, restarts or quits the app.'
+  zh: '把 DeepSeek Harness 放进 macOS 菜单栏：⌃⌥Q 唤出的窗口通过一次性预授权链接直接加载真正的 dsh 界面；配套宿主插件把带令牌的桥接投射到宿主的会话接口上，菜单栏里的提问因此成为可追踪的会话。另含 ⌘F 页内查找、精简窗口、流式回答、会话标题、文本粘贴，以及可启动 / 重启 / 退出应用的插件配置页。'
 YAML
 
 # 4. Branch, commit, push, PR.
@@ -69,7 +70,8 @@ fi
 gh pr create --repo "$UPSTREAM" \
   --head "$FORK_OWNER:$BRANCH" --base main \
   --title "plugins: add GnaneshKunal/dsh-menubar" \
-  --body "Adds \`$ENTRY\` — one file, no generated README edits.
+  --body "$(cat <<'BODY'
+Adds \`$ENTRY\` — one file, no generated README edits.
 
 - [x] One file at \`data/plugins/<owner>__<repo>.yml\`; READMEs left untouched for the post-merge regeneration
 - [x] \`plugin/package.json\` declares **\`dsh.bundle\`** (\`{\"patch\": \"./cordis.patch.yml\"}\`) so the plugin installs with \`dsh plugin add\`
@@ -78,6 +80,10 @@ gh pr create --repo "$UPSTREAM" \
 
 \`category: ui\` — the plugin adds a Settings page and the app is a client surface for sessions.
 
-Release: https://github.com/GnaneshKunal/dsh-menubar/releases/tag/v0.1.0"
+Installable as `@gnanesh/dsh-menubar` on npm (tag → OIDC publish, provenance).
 
-log "PR opened"
+Latest release: https://github.com/GnaneshKunal/dsh-menubar/releases/tag/v0.1.7
+BODY
+)"
+
+log "PR opened: $(gh pr view --repo "$UPSTREAM" --head "$FORK_OWNER:$BRANCH" --json url --jq .url)"
