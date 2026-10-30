@@ -17,7 +17,7 @@ UPSTREAM="awesome-dsh-plugin/awesome-dsh-plugin"
 FORK_OWNER="${FORK_OWNER:-GnaneshKunal}"
 REPO="GnaneshKunal/dsh-menubar"
 BRANCH="add-dsh-menubar"
-ENTRY="data/plugins/GnaneshKunal__dsh-menubar.yml"
+ENTRY="data/plugins/GnaneshKunal__dsh-menubar--plugin.yml"
 WORKDIR="${WORKDIR:-$HOME/.dsh/menubar-awesome-submission}"
 
 log() { printf '[submit-awesome] %s\n' "$*"; }
@@ -47,8 +47,8 @@ fi
 # 3. The entry. One file, no README edits (the list regenerates them).
 mkdir -p "$(dirname "$ENTRY")"
 cat > "$ENTRY" <<'YAML'
-url: https://github.com/GnaneshKunal/dsh-menubar
-name: GnaneshKunal/dsh-menubar
+url: https://github.com/GnaneshKunal/dsh-menubar/tree/main/plugin
+name: GnaneshKunal/dsh-menubar#plugin
 category: ui
 description:
   en: 'DeepSeek Harness in the macOS menu bar: a ⌃⌥Q window that boots the real dsh interface through a pre-authenticated URL, backed by a host plugin that projects a token-authenticated bridge onto the host session APIs, so asks made from the menu bar become tracked sessions. Includes ⌘F find-on-page, a compact fallback window, streaming answers, session titles, text paste, and a bundle config page that starts, restarts or quits the app.'
